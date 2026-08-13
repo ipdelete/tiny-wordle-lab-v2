@@ -1,0 +1,11 @@
+.venv/
+*.egg-info/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.DS_Store
+checkpoints/*
+!checkpoints/.gitkeep
+data/generated/*
+results/*
+!results/.gitkeep
