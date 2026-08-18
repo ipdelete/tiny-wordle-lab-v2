@@ -9,3 +9,4 @@ checkpoints/*
 data/generated/*
 results/*
 !results/.gitkeep
+!results/lab12_*.csv
