@@ -141,33 +141,67 @@ Task mix has a larger total variation distance of 0.064:
 Task-specific metrics remain comparable, but aggregate train/dev metrics mix
 different behaviors in different proportions.
 
+## Connection to Part I behavior
+
+These findings provide concrete dataset hypotheses for the model failures
+measured in Part I:
+
+| Observed model failure | EDA finding that could explain it |
+| --- | --- |
+| Repeated guesses and weak history consistency | Direct policy supervision is small relative to repeated auxiliary supervision on the same states |
+| Poor early-game decisions | Training contains 68 turn-2 policy examples and no turn-1 policy example |
+| Solve rate around 0.5% | Policy examples mostly occur after the candidate set has already collapsed to one or two words |
+| Good curriculum accuracy but poor gameplay | Approximately 88% of examples and 89.4% of tokens train easier auxiliary behaviors |
+
+These are causal hypotheses, not conclusions that EDA alone can prove. Lab 15
+must test them by changing the data while holding the model and training setup
+as constant as practical.
+
 ## Primary hypothesis for Lab 14
 
 The model's gameplay weakness is caused less by missing answers or target-word
 imbalance and more by insufficient supervision on genuine policy decisions,
-especially early high-uncertainty states and later long-history states.
+especially early high-uncertainty states and later states that combine long
+histories with nontrivial candidate sets.
 
 ## Dataset B implications
 
-Dataset B should:
+Dataset B requires two separate interventions. Reweighting can change which
+known states dominate optimization, but it cannot create policy states absent
+from the deterministic expert tree.
+
+### Lever 1: Reweight existing states
 
 1. Make `NEXT_GUESS` the primary training signal rather than allowing auxiliary
-   constraint tasks to consume approximately 88% of examples and tokens.
+   constraint tasks to consume approximately 88% of examples and 89.4% of
+   tokens.
 2. Preserve complete answer-level teacher trajectories so state weighting
    reflects actual gameplay visitation rather than only unique decision-tree
    nodes.
-3. Deliberately add high-candidate-count policy states. This may require
+3. Limit repeated auxiliary expansions from a single history or assign them a
+   fixed budget so they cannot overwhelm policy learning.
+4. Match train and dev task proportions and report task-specific metrics even
+   when aggregate metrics are retained.
+
+### Lever 2: Create missing strategic states
+
+1. Deliberately add high-candidate-count policy states. This may require
    multiple opening guesses, off-policy but legal histories, or another
    controlled source of early-state diversity.
-4. Increase the absolute and strategic diversity of turn-5 and turn-6 policy
+2. Increase the absolute and strategic diversity of turn-5 and turn-6 policy
    examples. Do not rebalance on history depth alone: 54.1% of policy examples
    already have depth-three-or-greater histories, but nearly all have tiny
    candidate sets.
-5. Limit repeated auxiliary expansions from a single history or assign them a
-   fixed budget so they cannot overwhelm policy learning.
-6. Match train and dev task proportions and report task-specific metrics even
-   when aggregate metrics are retained.
-7. Preserve Dataset A unchanged as the control for the Lab 15 LoRA experiment.
+
+Replaying more answers through the same deterministic expert will reproduce the
+same decision tree and the same early-state collapse. Lab 14 therefore needs an
+explicit state-generation policy, not merely a larger trajectory count.
+
+### Controlled comparison
+
+Preserve Dataset A unchanged. Define Dataset B with a recorded sampling recipe
+for both levers, then use the fixed Lab 15 LoRA setup to test whether the new
+policy allocation and state coverage improve deployed gameplay.
 
 The new proportions should be derived from these observed weaknesses and the
 deployment objective, not chosen merely to make the dataset look balanced.
