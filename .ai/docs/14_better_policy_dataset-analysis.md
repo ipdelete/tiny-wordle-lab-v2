@@ -79,7 +79,7 @@ absence of 51+ policy states is replaced by 40 unique states.
 
 **Evidence chain:** unique high-uncertainty states increase from 12 to 235 ->
 the model can observe more than terminal answer completion -> early strategic
-choice becomes learnable from direct supervision -> expect the largest Lab 15
+choice now receives meaningful direct supervision -> expect the largest Lab 15
 gain on turn-2 and broad-candidate evaluations.
 
 ### Deep and late-game coverage improves in absolute terms
@@ -280,12 +280,32 @@ The pre-registered Lab 15 comparison should:
 2. Equalize total training tokens or optimizer steps, not epochs.
 3. Seed the same `RAISE` opening for both models, then use the same gameplay
    code from turn 2 onward. Preserve the zero reserved-path overlap assertion.
-4. Report exact-match accuracy by task, turn, and candidate-count bucket.
-5. Report gameplay solve rate, turns on wins, valid-guess rate, history
-   consistency, repeated guesses, and candidate-set reduction.
-6. Report generated-guess frequency and top-target concentration to detect
-   collapse caused by visitation weighting.
-7. Keep Dataset B frozen for the first comparison.
+4. Use the metric hierarchy below instead of choosing whichever result improves.
+5. Keep Dataset B frozen for the first comparison.
+
+### Metric hierarchy
+
+The primary metric is the **post-opening history-consistent non-repeated guess
+rate**. The numerator counts model calls that produce a format-valid five-letter
+guess, do not repeat an earlier guess, and satisfy every prior feedback row. The
+denominator is every model call after the seeded `RAISE` turn across all held-out
+games.
+
+This produces many per-turn observations and measures the behavior Dataset B
+directly trains. A 19-game solve rate is too noisy to carry the comparison by
+itself.
+
+Secondary metrics are:
+
+1. solve rate from the fixed `RAISE` opening;
+2. candidate-set reduction on valid non-repeated guesses, reported separately
+   for broad and narrow candidate sets;
+3. held-out `NEXT_GUESS` policy quality by turn and candidate-count bucket.
+
+Guardrails are format-valid output rate, repeat rate, generated top-10 guess
+share, frequency of the most common Dataset B teacher targets, and auxiliary
+task accuracy. These diagnose regressions but do not replace the primary
+metric.
 
 The strongest prediction is not a uniform accuracy increase. Dataset B should
 improve early broad-candidate decisions, valid policy actions, and end-to-end

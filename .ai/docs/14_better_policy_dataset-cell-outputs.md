@@ -2158,6 +2158,14 @@ The primary comparison tests the two-component redesign jointly. It can show tha
 
 > Does policy allocation plus deliberately created high-uncertainty state coverage improve actual Wordle gameplay?
 
+### Lab 15 metric hierarchy
+
+The primary metric is **post-opening history-consistent non-repeated guess rate**. Count a model call as successful only when it returns a format-valid five-letter guess, does not repeat an earlier guess, and satisfies every prior feedback row. Divide by all model calls after the seeded `RAISE` turn across the held-out games.
+
+Secondary metrics are fixed-opening solve rate, candidate-set reduction split by broad versus narrow states, and held-out `NEXT_GUESS` policy quality by turn and candidate-count bucket.
+
+Format-valid output rate, repeat rate, generated top-10 guess share, frequent-teacher-target output, and auxiliary task accuracy are guardrails. They diagnose regressions but do not replace the primary metric.
+
 # Lab 14 checkpoint
 
 Record before training:
