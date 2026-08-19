@@ -261,8 +261,22 @@ pairs, B/Y has 12, and Y/G has 7.
 
 ## Implications for Lab 17
 
-Lab 17 should test an explicit derived-state representation against the same
-frozen adapters or newly controlled adapters. The representation should expose:
+Lab 17 should make training-time representation the controlled intervention:
+
+```text
+Model B-raw
+Frozen Lab 15 Dataset B adapter with raw history
+
+Model B-structured
+Fresh base model and LoRA adapter trained on a prompt-only transformation
+of the same Dataset B states, targets, splits, and row weights
+```
+
+Do not mix that comparison with an inference-only prompt change. Sending
+structured prompts to the frozen B-raw adapter is an optional transfer
+diagnostic because the adapter was never trained on that representation.
+
+The explicit representation should expose:
 
 * fixed green letters by position;
 * present letters with excluded positions;
@@ -271,18 +285,34 @@ frozen adapters or newly controlled adapters. The representation should expose:
 * previous guesses as a separate no-repeat set;
 * the remaining candidate count.
 
-The primary Lab 17 representation metric should reuse these 34 perturbation
-pairs:
+The new adapter should use the same base checkpoint, LoRA configuration,
+optimizer, scheduler, seed, batch size, and checkpoint rule as Model B-raw.
+Because explicit prompts may be longer, preregister whether optimizer steps,
+examples, or input-token exposure is held fixed and report actual exposure.
+
+The primary Lab 17 metric should reuse these 34 perturbation pairs:
 
 ```text
-both-consistent rate under explicit state
+paired consistency under explicit state
 minus
-both-consistent rate under raw history
+paired consistency under raw history
 ```
 
-The raw-history baseline is 0% for every model and interface. Sensitivity is a
-secondary diagnostic. Raising sensitivity without raising paired consistency
-would reproduce Lab 16's state-misinterpretation failure.
+Also report:
+
+```text
+branch consistency =
+individually consistent actions / parsed branches
+```
+
+Model B-raw's training-format baselines are 0 of 31 pairs and 4 of 62
+branches, or 0.0% paired consistency and 6.5% branch consistency. Paired
+consistency remains the headline because it proves that the representation
+supports both sides of a controlled state change. Branch consistency measures
+partial progress without letting one failed side erase a correct action.
+
+Sensitivity remains secondary. Raising sensitivity without raising paired or
+branch consistency would reproduce Lab 16's state-misinterpretation failure.
 
 The strongest next hypothesis is:
 
