@@ -22,6 +22,17 @@ We will inspect:
 
 The output of this lab is a set of testable data hypotheses, not a new model.
 
+### Connect EDA to the Part I failures
+
+EDA is not random archaeology. Each question below is motivated by behavior we already measured:
+
+| Part I symptom | Dataset question |
+| --- | --- |
+| `NEXT_GUESS` exact match around 1.8% | How much direct policy training signal exists? |
+| History consistency around 0-28% | How much deep-history policy supervision exists? |
+| Repeated guesses | Is action or underlying-state diversity poor? |
+| Solve rate around 0.5% | Are late-game policy states adequately represented? |
+
 
 ```python
 from __future__ import annotations
@@ -1204,6 +1215,19 @@ plt.show()
 
 task_difficulty = pd.crosstab(df["task"], df["difficulty"])
 display(task_difficulty)
+
+policy_difficulty_by_split = pd.crosstab(
+    next_guess["split"], next_guess["difficulty"]
+)
+display(policy_difficulty_by_split)
+
+train_policy_coverage = pd.crosstab(
+    next_guess.loc[next_guess["split"] == "train", "turn"],
+    next_guess.loc[next_guess["split"] == "train", "difficulty"],
+)
+display(train_policy_coverage.style.set_caption(
+    "Training NEXT_GUESS coverage: turn x candidate-count bucket"
+))
 ```
 
 
@@ -1362,6 +1386,125 @@ display(task_difficulty)
   </tbody>
 </table>
 </div>
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>difficulty</th>
+      <th>1-2</th>
+      <th>3-10</th>
+      <th>11-50</th>
+      <th>51-200</th>
+      <th>201+</th>
+    </tr>
+    <tr>
+      <th>split</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>dev</th>
+      <td>231</td>
+      <td>113</td>
+      <td>35</td>
+      <td>6</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>test</th>
+      <td>15</td>
+      <td>13</td>
+      <td>8</td>
+      <td>6</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>train</th>
+      <td>1656</td>
+      <td>208</td>
+      <td>12</td>
+      <td>0</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
+<style type="text/css">
+</style>
+<table id="T_ea4d0">
+  <caption>Training NEXT_GUESS coverage: turn x candidate-count bucket</caption>
+  <thead>
+    <tr>
+      <th class="index_name level0" >difficulty</th>
+      <th id="T_ea4d0_level0_col0" class="col_heading level0 col0" >1-2</th>
+      <th id="T_ea4d0_level0_col1" class="col_heading level0 col1" >3-10</th>
+      <th id="T_ea4d0_level0_col2" class="col_heading level0 col2" >11-50</th>
+    </tr>
+    <tr>
+      <th class="index_name level0" >turn</th>
+      <th class="blank col0" >&nbsp;</th>
+      <th class="blank col1" >&nbsp;</th>
+      <th class="blank col2" >&nbsp;</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th id="T_ea4d0_level0_row0" class="row_heading level0 row0" >2</th>
+      <td id="T_ea4d0_row0_col0" class="data row0 col0" >33</td>
+      <td id="T_ea4d0_row0_col1" class="data row0 col1" >28</td>
+      <td id="T_ea4d0_row0_col2" class="data row0 col2" >7</td>
+    </tr>
+    <tr>
+      <th id="T_ea4d0_level0_row1" class="row_heading level0 row1" >3</th>
+      <td id="T_ea4d0_row1_col0" class="data row1 col0" >649</td>
+      <td id="T_ea4d0_row1_col1" class="data row1 col1" >140</td>
+      <td id="T_ea4d0_row1_col2" class="data row1 col2" >5</td>
+    </tr>
+    <tr>
+      <th id="T_ea4d0_level0_row2" class="row_heading level0 row2" >4</th>
+      <td id="T_ea4d0_row2_col0" class="data row2 col0" >763</td>
+      <td id="T_ea4d0_row2_col1" class="data row2 col1" >33</td>
+      <td id="T_ea4d0_row2_col2" class="data row2 col2" >0</td>
+    </tr>
+    <tr>
+      <th id="T_ea4d0_level0_row3" class="row_heading level0 row3" >5</th>
+      <td id="T_ea4d0_row3_col0" class="data row3 col0" >174</td>
+      <td id="T_ea4d0_row3_col1" class="data row3 col1" >5</td>
+      <td id="T_ea4d0_row3_col2" class="data row3 col2" >0</td>
+    </tr>
+    <tr>
+      <th id="T_ea4d0_level0_row4" class="row_heading level0 row4" >6</th>
+      <td id="T_ea4d0_row4_col0" class="data row4 col0" >37</td>
+      <td id="T_ea4d0_row4_col1" class="data row4 col1" >2</td>
+      <td id="T_ea4d0_row4_col2" class="data row4 col2" >0</td>
+    </tr>
+  </tbody>
+</table>
+
 
 
 ## 13.10 Answer coverage
@@ -1534,6 +1677,18 @@ duplication_summary = pd.Series({
 })
 display(duplication_summary.to_frame("value"))
 display(state_reuse.head(15))
+
+effective_state_reuse = df.groupby("task").agg(
+    examples=("task", "size"),
+    unique_histories=("history", "nunique"),
+)
+effective_state_reuse["examples_per_unique_history"] = (
+    effective_state_reuse["examples"]
+    / effective_state_reuse["unique_histories"]
+)
+display(effective_state_reuse.sort_values(
+    "examples_per_unique_history", ascending=False
+).round(3))
 ```
 
 
@@ -1707,6 +1862,60 @@ display(state_reuse.head(15))
       <td>94</td>
       <td>2</td>
       <td>36</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>examples</th>
+      <th>unique_histories</th>
+      <th>examples_per_unique_history</th>
+    </tr>
+    <tr>
+      <th>task</th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>VALID_CANDIDATE</th>
+      <td>10516</td>
+      <td>2303</td>
+      <td>4.566</td>
+    </tr>
+    <tr>
+      <th>CHOOSE_VALID</th>
+      <td>6004</td>
+      <td>2303</td>
+      <td>2.607</td>
+    </tr>
+    <tr>
+      <th>NEXT_GUESS</th>
+      <td>2304</td>
+      <td>2304</td>
+      <td>1.000</td>
     </tr>
   </tbody>
 </table>
@@ -2085,6 +2294,7 @@ scorecard = pd.Series({
     "late-game (turn 5-6) example share": train["turn"].ge(5).mean(),
     "late-game NEXT_GUESS share": train_policy["turn"].ge(5).mean(),
     "multi-turn (history >= 3) share": train["history_depth"].ge(3).mean(),
+    "NEXT_GUESS history >= 3 share": train_policy["history_depth"].ge(3).mean(),
     "small-set (<= 10) share": train["candidate_count"].le(10).mean(),
     "unique NEXT_GUESS target rate": (
         train_policy["response"].nunique() / len(train_policy)
@@ -2100,57 +2310,61 @@ display(scorecard.to_frame("value").style.format("{:.3f}"))
 
 <style type="text/css">
 </style>
-<table id="T_981ce">
+<table id="T_e19d5">
   <thead>
     <tr>
       <th class="blank level0" >&nbsp;</th>
-      <th id="T_981ce_level0_col0" class="col_heading level0 col0" >value</th>
+      <th id="T_e19d5_level0_col0" class="col_heading level0 col0" >value</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <th id="T_981ce_level0_row0" class="row_heading level0 row0" >train examples</th>
-      <td id="T_981ce_row0_col0" class="data row0 col0" >16465.000</td>
+      <th id="T_e19d5_level0_row0" class="row_heading level0 row0" >train examples</th>
+      <td id="T_e19d5_row0_col0" class="data row0 col0" >16465.000</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row1" class="row_heading level0 row1" >train tokens</th>
-      <td id="T_981ce_row1_col0" class="data row1 col0" >1183628.000</td>
+      <th id="T_e19d5_level0_row1" class="row_heading level0 row1" >train tokens</th>
+      <td id="T_e19d5_row1_col0" class="data row1 col0" >1183628.000</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row2" class="row_heading level0 row2" >NEXT_GUESS example share</th>
-      <td id="T_981ce_row2_col0" class="data row2 col0" >0.114</td>
+      <th id="T_e19d5_level0_row2" class="row_heading level0 row2" >NEXT_GUESS example share</th>
+      <td id="T_e19d5_row2_col0" class="data row2 col0" >0.114</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row3" class="row_heading level0 row3" >NEXT_GUESS token share</th>
-      <td id="T_981ce_row3_col0" class="data row3 col0" >0.106</td>
+      <th id="T_e19d5_level0_row3" class="row_heading level0 row3" >NEXT_GUESS token share</th>
+      <td id="T_e19d5_row3_col0" class="data row3 col0" >0.106</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row4" class="row_heading level0 row4" >late-game (turn 5-6) example share</th>
-      <td id="T_981ce_row4_col0" class="data row4 col0" >0.063</td>
+      <th id="T_e19d5_level0_row4" class="row_heading level0 row4" >late-game (turn 5-6) example share</th>
+      <td id="T_e19d5_row4_col0" class="data row4 col0" >0.063</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row5" class="row_heading level0 row5" >late-game NEXT_GUESS share</th>
-      <td id="T_981ce_row5_col0" class="data row5 col0" >0.116</td>
+      <th id="T_e19d5_level0_row5" class="row_heading level0 row5" >late-game NEXT_GUESS share</th>
+      <td id="T_e19d5_row5_col0" class="data row5 col0" >0.116</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row6" class="row_heading level0 row6" >multi-turn (history >= 3) share</th>
-      <td id="T_981ce_row6_col0" class="data row6 col0" >0.298</td>
+      <th id="T_e19d5_level0_row6" class="row_heading level0 row6" >multi-turn (history >= 3) share</th>
+      <td id="T_e19d5_row6_col0" class="data row6 col0" >0.298</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row7" class="row_heading level0 row7" >small-set (<= 10) share</th>
-      <td id="T_981ce_row7_col0" class="data row7 col0" >0.682</td>
+      <th id="T_e19d5_level0_row7" class="row_heading level0 row7" >NEXT_GUESS history >= 3 share</th>
+      <td id="T_e19d5_row7_col0" class="data row7 col0" >0.541</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row8" class="row_heading level0 row8" >unique NEXT_GUESS target rate</th>
-      <td id="T_981ce_row8_col0" class="data row8 col0" >1.000</td>
+      <th id="T_e19d5_level0_row8" class="row_heading level0 row8" >small-set (<= 10) share</th>
+      <td id="T_e19d5_row8_col0" class="data row8 col0" >0.682</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row9" class="row_heading level0 row9" >top-10 NEXT_GUESS target share</th>
-      <td id="T_981ce_row9_col0" class="data row9 col0" >0.005</td>
+      <th id="T_e19d5_level0_row9" class="row_heading level0 row9" >unique NEXT_GUESS target rate</th>
+      <td id="T_e19d5_row9_col0" class="data row9 col0" >1.000</td>
     </tr>
     <tr>
-      <th id="T_981ce_level0_row10" class="row_heading level0 row10" >answer coverage</th>
-      <td id="T_981ce_row10_col0" class="data row10 col0" >1.000</td>
+      <th id="T_e19d5_level0_row10" class="row_heading level0 row10" >top-10 NEXT_GUESS target share</th>
+      <td id="T_e19d5_row10_col0" class="data row10 col0" >0.005</td>
+    </tr>
+    <tr>
+      <th id="T_e19d5_level0_row11" class="row_heading level0 row11" >answer coverage</th>
+      <td id="T_e19d5_row11_col0" class="data row11 col0" >1.000</td>
     </tr>
   </tbody>
 </table>

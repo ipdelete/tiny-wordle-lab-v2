@@ -6,7 +6,7 @@ The current corpus is primarily a constraint-recognition curriculum, not a
 gameplay-policy dataset.
 
 In the training split, `NEXT_GUESS` represents only 11.4% of examples and
-approximately 11% of tokens. The other 88% of the training signal teaches
+10.6% of tokens. The other 88% of the training signal teaches
 `VALID_CANDIDATE` and `CHOOSE_VALID`. Those auxiliary tasks can help the model
 learn Wordle constraints, but they do not directly teach the deployed behavior:
 choosing the next guess.
@@ -43,15 +43,40 @@ collapse into a small number of unique policy states. That is mechanically
 reasonable, but it means the resulting corpus is state-uniform rather than
 representative of how frequently states occur across complete games.
 
-### Late-game and long-history coverage is thin
+### Deep histories exist, but late-game policy coverage is thin
 
 Turns 5 and 6 provide 218 training policy examples, or 11.6% of
 `NEXT_GUESS`. Across all tasks, only 6.3% of examples occur on turns 5-6, and
 29.8% contain histories of depth three or greater.
 
-Late-game states are present, but the absolute policy count is small. This is a
-plausible explanation for failures involving long histories or failure to
-exploit an obvious final candidate.
+Policy-specific history depth is healthier than the aggregate number suggests:
+54.1% of training `NEXT_GUESS` examples contain histories of depth three or
+greater. History depth by itself is therefore not obviously deficient.
+
+The important interaction is that deep-history policy states have almost always
+collapsed to tiny candidate sets. On turns 4-6, only 40 policy examples have
+3-10 candidates and none has more than 10. Late-game states are present, but
+the absolute count is small and their strategic diversity is narrow. This is a
+more precise hypothesis for history-consistency and late-game failures than
+simply saying that the corpus needs longer histories.
+
+### Policy turn-by-difficulty coverage has clear holes
+
+The training `NEXT_GUESS` matrix is:
+
+| Turn | 1-2 candidates | 3-10 candidates | 11-50 candidates |
+| ---: | ---: | ---: | ---: |
+| 2 | 33 | 28 | 7 |
+| 3 | 649 | 140 | 5 |
+| 4 | 763 | 33 | 0 |
+| 5 | 174 | 5 | 0 |
+| 6 | 37 | 2 | 0 |
+
+There are no training policy examples with 51 or more candidates. Only 12 have
+11-50 candidates, and all of those occur on turns 2-3. This confirms that the
+policy corpus mostly teaches completion after uncertainty has already been
+removed. The general corpus's apparently healthy candidate-count distribution
+comes from the auxiliary tasks and does not describe policy supervision.
 
 ### Apparent dataset size overstates state diversity
 
@@ -64,6 +89,19 @@ There are no exact prompt/response duplicates and no ambiguous prompts, so the
 corpus is mechanically clean. The issue is weighting: frequently expanded
 auxiliary states consume much more training signal than their number of unique
 gameplay decisions suggests.
+
+Effective state reuse makes that weighting explicit:
+
+| Task | Examples | Unique histories | Examples per history |
+| --- | ---: | ---: | ---: |
+| `VALID_CANDIDATE` | 10,516 | 2,303 | 4.566 |
+| `CHOOSE_VALID` | 6,004 | 2,303 | 2.607 |
+| `NEXT_GUESS` | 2,304 | 2,304 | 1.000 |
+
+Each policy history receives one direct action label, while the same underlying
+state receives an average of 7.173 auxiliary examples across the two constraint
+tasks. Nominal task share therefore understates how repeatedly the corpus
+reinforces auxiliary behavior on the same states.
 
 ### Target-frequency collapse is not a bottleneck
 
@@ -121,8 +159,10 @@ Dataset B should:
 3. Deliberately add high-candidate-count policy states. This may require
    multiple opening guesses, off-policy but legal histories, or another
    controlled source of early-state diversity.
-4. Increase the absolute number of turn-5 and turn-6 policy examples and
-   histories of depth three or greater.
+4. Increase the absolute and strategic diversity of turn-5 and turn-6 policy
+   examples. Do not rebalance on history depth alone: 54.1% of policy examples
+   already have depth-three-or-greater histories, but nearly all have tiny
+   candidate sets.
 5. Limit repeated auxiliary expansions from a single history or assign them a
    fixed budget so they cannot overwhelm policy learning.
 6. Match train and dev task proportions and report task-specific metrics even
