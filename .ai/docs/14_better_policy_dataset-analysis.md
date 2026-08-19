@@ -286,10 +286,14 @@ The pre-registered Lab 15 comparison should:
 ### Metric hierarchy
 
 The primary metric is **fixed-state usable-policy rate** on the 47 held-out
-post-opening states. A successful response is a format-valid five-letter guess
-that avoids every guess in the supplied history and satisfies all prior
-feedback. Both models receive the same states, so model behavior cannot change
-the denominator or difficulty mix.
+post-opening states. A successful response is a format-valid five-letter word
+in the repository's 2,315-answer lexicon. It must avoid every guess in the
+supplied history and satisfy all prior feedback. Both models receive the same
+states, so model behavior cannot change the denominator or difficulty mix.
+
+This is stricter than real Wordle because the repository does not include the
+larger allowed-guess vocabulary. Report it as answer-lexicon validity, not full
+legal-guess validity.
 
 Each state is evaluated under the training prompt and deployment prompt. The
 training-format result carries the primary data comparison. The deployment
