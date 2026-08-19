@@ -238,11 +238,21 @@ Failure to improve would not prove that high-uncertainty states are useless; it
 could mean their prompt histories are too far from the model's on-policy
 distribution.
 
+### Opening policy is outside this comparison
+
+Neither train corpus contains the no-history state. The current benchmark asks
+the model to generate turn 1, which would mix an untrained opening decision into
+the policy comparison. Lab 15 should seed the same `RAISE` guess and feedback
+for both models, then score learned decisions from turn 2 onward.
+
+This narrows the conclusion. Lab 15 will test post-opening policy, not whether
+Dataset B teaches the model to choose an opening.
+
 ### The internal test split is too small for headline conclusions
 
 Branch grouping produces 8,768 train rows, 1,135 dev rows, and only 21 internal
 test rows. The 21-row test split is an integrity artifact, not a credible final
-evaluation set. The fixed 19-game gameplay harness remains the relevant
+evaluation set. The fixed 19-game gameplay evaluation remains the relevant
 end-to-end test.
 
 ### The teacher has a known evaluation failure
@@ -268,8 +278,8 @@ The pre-registered Lab 15 comparison should:
    rank, target modules, optimizer, learning rate, batch construction, and
    checkpoint-selection rule.
 2. Equalize total training tokens or optimizer steps, not epochs.
-3. Use the same fixed gameplay harness and preserve the zero reserved-path
-   overlap assertion.
+3. Seed the same `RAISE` opening for both models, then use the same gameplay
+   code from turn 2 onward. Preserve the zero reserved-path overlap assertion.
 4. Report exact-match accuracy by task, turn, and candidate-count bucket.
 5. Report gameplay solve rate, turns on wins, valid-guess rate, history
    consistency, repeated guesses, and candidate-set reduction.

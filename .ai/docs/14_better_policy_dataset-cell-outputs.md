@@ -22,16 +22,18 @@ Dataset B changes two things for two different reasons.
 - preserve complete canonical teacher trajectories;
 - let repeated state visits represent how often answers encounter a state;
 - cap auxiliary expansion at one example per unique history;
-- keep only one copy of the constant no-history opening decision.
+- omit the shared no-history state so neither corpus trains on the reserved gameplay path;
 
 ### Lever 2: create missing strategic states
 
 - force several legal, controlled opening guesses;
 - ask the symbolic teacher for the next action after that opening;
 - retain unique turn-2 states with at least 11 candidates;
-- retain unique turn-4+ states with at least 3 candidates.
+- retain unique turn-3+ states with at least 3 candidates.
 
 Generating more games from the same deterministic opening would reproduce the same decision tree. Alternative legal openings create states that tree does not expose.
+
+The current benchmark asks the model to generate turn 1. Lab 15 will instead seed the same fixed `RAISE` opening for both models, then evaluate learned policy from turn 2 onward. That keeps opening treatment identical while this experiment tests the post-opening dataset hypothesis.
 
 ## 14.2 Experimental contract
 
@@ -289,7 +291,7 @@ def play_teacher_trajectory(
 
 ## 14.6 Lever 1: preserve canonical trajectory visits
 
-We retain every turn 2-6 state from each solved development trajectory. Repeated prompts are intentional visitation weights. Every state on a reserved gameplay answer's canonical expert path is excluded from Dataset B, matching Dataset A's train boundary.
+We retain every turn 2-6 state from each solved development trajectory. Repeated prompts are intentional visitation weights. Every state on a reserved gameplay answer's canonical expert path is excluded from Dataset B, matching Dataset A's train boundary. This includes the no-history state, so Lab 15 must seed the same fixed opening for both models.
 
 
 ```python
@@ -1517,6 +1519,8 @@ display(scorecards)
 
 Dataset B intentionally permits repeated policy visits but limits auxiliary amplification. This table measures whether that optimization pressure actually changed.
 
+Visitation weighting also makes some teacher actions common again. That is not automatically harmful, but it creates a collapse risk that Dataset A did not have. Lab 15 must report generated-guess frequencies, the generated top-10 guess share, and overproduction of the most frequent Dataset B teacher targets.
+
 
 ```python
 def effective_reuse(frame: pd.DataFrame, name: str) -> pd.DataFrame:
@@ -1901,6 +1905,8 @@ plt.show()
 
 The files include provenance columns for analysis. Lab 15 should tokenize only `prompt` and `response`.
 
+The branch-grouped test split contains only 21 rows. Treat it as a mechanical integrity split, not a headline metric. The reserved 19-game evaluation is the end-to-end test.
+
 
 ```python
 OUTPUT_COLUMNS = [
@@ -2146,9 +2152,9 @@ Dataset B is justified if the executed comparisons show:
 4. fixed gameplay test answers and every exact state on their canonical expert paths remain excluded from both train corpora;
 5. prompts and targets remain mechanically valid and unambiguous.
 
-Lab 15 should hold the base model, LoRA configuration, optimizer, learning rate, total optimizer steps or training-token budget, and gameplay harness constant. Equal epochs would be confounded because Dataset A and Dataset B contain different token counts.
+Lab 15 should hold the base model, LoRA configuration, optimizer, learning rate, total optimizer steps or training-token budget, and gameplay evaluation constant. Both evaluations must begin with the same fixed `RAISE` turn so this experiment starts at turn 2. Equal epochs would be confounded because Dataset A and Dataset B contain different token counts.
 
-The primary comparison tests the two-component redesign jointly. The `source` column preserves the boundary needed for a later reweight-only ablation if the combined intervention works. The causal question is:
+The primary comparison tests the two-component redesign jointly. It can show that policy-focused dataset design helped, but it cannot assign the gain to one component. The `source` column preserves the boundary for two later ablations: Dataset B without alternative openings, and Dataset B with canonical policy visits deduplicated. Lab 22 is the right place to run them if the combined intervention works. The causal question is:
 
 > Does policy allocation plus deliberately created high-uncertainty state coverage improve actual Wordle gameplay?
 
