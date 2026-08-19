@@ -15,11 +15,17 @@ Neither adapter solved any of the 19 fixed-opening games. The practical
 hypothesis that Dataset B would improve broad-candidate policy behavior is not
 supported by this run.
 
-Dataset B did improve several intermediate behaviors. Model B produced fewer
-answer-list repeats, transferred the training prompt better than Model A, and
-often emitted guesses with strong hypothetical candidate reduction. Those
-guesses almost never satisfied the supplied history. The model learned a
-different output distribution, not a state-conditioned policy.
+Better policy coverage did change the learned behavior. Model B produced three
+usable narrow-state calls where Model A produced none, performed better under
+the training-format prompt, and often emitted guesses with strong hypothetical
+candidate reduction. Those guesses almost never satisfied the supplied
+history. Better coverage was not sufficient to produce a state-conditioned
+broad-candidate policy.
+
+Prompt transfer made the result worse, but it cannot explain most of the
+failure. Model B fell from 6.4% usable under the training prompt to 2.1% under
+the deployment prompt. Training-format performance was already catastrophically
+low.
 
 ## Experimental controls held
 
@@ -202,7 +208,10 @@ better than selection.
 
 Dataset B made policy examples the majority of the training signal and added
 missing high-uncertainty states. Model B still made no usable broad-state call
-and solved no games. Policy volume and state coverage were not sufficient.
+and solved no games. Better policy coverage changed the output distribution
+and produced three narrow-state successes, but it was not sufficient for
+state-conditioned broad-candidate play. This experiment does not show that
+coverage was irrelevant or unnecessary.
 
 ### Deployment prompting is the whole problem
 
@@ -259,13 +268,30 @@ Lab 16 should:
 2. Count repeated parsed outputs independently of lexicon membership.
 3. Compare each model's output for the same word history under training and
    deployment prompts.
-4. Perturb one feedback token at a time and measure whether the generated guess
-   changes.
-5. Group failures by candidate bucket, history depth, repeated letters, and
+4. Build paired, reachable states that differ by one valid feedback branch.
+   Do not invent arbitrary feedback strings that may describe impossible
+   games.
+5. Report state perturbation sensitivity as the fraction of paired states
+   whose generated action changes:
+
+   ```text
+   changed generated actions / valid paired state perturbations
+   ```
+
+6. Cross action sensitivity with consistency in the perturbed state:
+
+   | Action changes | New action is consistent | Diagnosis |
+   | --- | --- | --- |
+   | no | no | state insensitivity |
+   | yes | no | state misinterpretation |
+   | yes | yes | state-conditioned behavior |
+   | no | yes in both states | shared valid action; not necessarily a failure |
+
+7. Group failures by candidate bucket, history depth, repeated letters, and
    feedback pattern.
-6. Inspect Model B's four gameplay attractors and trace which Dataset B targets
+8. Inspect Model B's four gameplay attractors and trace which Dataset B targets
    or prompt fragments are nearest to them.
-7. Separate generally informative guesses from state-conditioned valid
+9. Separate generally informative guesses from state-conditioned valid
    guesses when reporting reduction.
 
 The strongest next hypothesis is:
@@ -274,5 +300,8 @@ The strongest next hypothesis is:
 > but Qwen3-0.6B still does not bind those outputs to the supplied feedback
 > history.
 
-Lab 16 should try to falsify that statement before Lab 17 changes the state
-representation.
+Lab 16 should distinguish two ways that hypothesis could be wrong. The model
+may be insensitive to state changes, or it may change its action while
+misinterpreting the constraints. The first result points toward a more explicit
+state representation. The second points toward targeted constraint learning.
+Make that distinction before Lab 17 changes the representation.

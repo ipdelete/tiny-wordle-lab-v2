@@ -154,17 +154,23 @@ This lab tests a specific hypothesis:
 
 If the new dataset significantly improves behavior, we have evidence that data distribution was an important bottleneck.
 
-If it does not, we have eliminated one possible explanation.
+If it does not, the intervention was not sufficient. That does not prove that
+data distribution was irrelevant or that better coverage is unnecessary.
 
 Both results are useful.
 
 ---
 
-## Lab 16 — Error Analysis of the Improved Model
+## Lab 16 — Error Analysis of the Policy Models
 
 Once the new model has been trained, we stop looking only at averages.
 
 We inspect its failures.
+
+Lab 15 showed that better policy coverage changed the output distribution but
+did not produce usable broad-candidate play. Model B reached 6.4% usable under
+the training prompt and 2.1% under the deployment prompt. Prompt transfer
+matters, but the model already fails under its training interface.
 
 We will collect failed games and classify failure modes such as:
 
@@ -179,9 +185,38 @@ We will collect failed games and classify failure modes such as:
 
 We will group these failures and measure how frequently each occurs.
 
-We may discover, for example, that valid formatting and repetition are largely solved but multi-turn consistency remains poor.
+The central question is whether the model ignores the state or reads it
+incorrectly:
+
+* **state insensitivity:** the generated action rarely changes when a valid
+  feedback branch changes;
+* **state misinterpretation:** the action changes, but the new guess violates
+  the constraints encoded by the changed history.
+
+We will construct paired, reachable Wordle states that differ by one valid
+feedback branch. Arbitrary feedback edits are not suitable because they can
+create impossible histories.
+
+For these pairs, report:
+
+```text
+state perturbation sensitivity =
+changed generated actions / valid paired state perturbations
+```
+
+Cross sensitivity with history consistency. An unchanged guess can remain
+valid in both states, so action stability alone is not a failure. A changed but
+inconsistent guess shows that the model responds to state while interpreting
+it incorrectly.
+
+We may discover, for example, that valid formatting is largely solved while
+multi-turn consistency remains poor.
 
 That changes the next intervention.
+
+State insensitivity supports making the state representation more explicit in
+Lab 17. State misinterpretation supports targeted constraint-learning examples
+before changing the interface.
 
 This lab teaches an important ML engineering principle:
 
