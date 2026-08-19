@@ -285,22 +285,22 @@ The pre-registered Lab 15 comparison should:
 
 ### Metric hierarchy
 
-The primary metric is the **post-opening history-consistent non-repeated guess
-rate**. The numerator counts model calls that produce a format-valid five-letter
-guess, do not repeat an earlier guess, and satisfy every prior feedback row. The
-denominator is every model call after the seeded `RAISE` turn across all held-out
-games.
+The primary metric is **fixed-state usable-policy rate** on the 47 held-out
+post-opening states. A successful response is a format-valid five-letter guess
+that avoids every guess in the supplied history and satisfies all prior
+feedback. Both models receive the same states, so model behavior cannot change
+the denominator or difficulty mix.
 
-This produces many per-turn observations and measures the behavior Dataset B
-directly trains. A 19-game solve rate is too noisy to carry the comparison by
-itself.
+Each state is evaluated under the training prompt and deployment prompt. The
+training-format result carries the primary data comparison. The deployment
+result measures prompt transfer.
 
 Secondary metrics are:
 
 1. solve rate from the fixed `RAISE` opening;
-2. candidate-set reduction on valid non-repeated guesses, reported separately
-   for broad and narrow candidate sets;
-3. held-out `NEXT_GUESS` policy quality by turn and candidate-count bucket.
+2. on-policy usable-call rate by turn;
+3. candidate-set reduction on history-consistent non-repeated guesses, reported
+   separately for broad and narrow candidate sets.
 
 Guardrails are format-valid output rate, repeat rate, generated top-10 guess
 share, frequency of the most common Dataset B teacher targets, and auxiliary
