@@ -108,6 +108,11 @@ B-structured's call-level usable and history-consistency rates were both
 10 of 84, or 11.9%. B-raw scored zero on both measures across 95 calls.
 Parsed-output repetition fell from 42.1% to 27.4%.
 
+Matching each model to its training interface keeps the representation
+comparison fair, but it does not test robustness under a common deployment
+interface. The 5 of 19 result is evidence of learned gameplay under the
+structured interface, not deployment transfer.
+
 The model still has obvious attractors. `CODY` appeared 25 times, and several
 invalid strings repeated five times each. Five solved games are a useful
 guardrail result, not evidence of a generally usable Wordle policy.
@@ -179,8 +184,9 @@ the original B-raw run.
 
 ## Implications
 
-Lab 17 has answered the representation question well enough to move on, with
-one qualification: treat the result as promising rather than settled.
+Lab 17 provides enough evidence to carry the structured representation forward
+as the working representation, while treating its advantage as provisional
+pending replication.
 
 The evidence chain is:
 
