@@ -1,23 +1,3 @@
-"""Generate notebooks/18b_constrained_ranking_probe.ipynb."""
-
-import json
-from pathlib import Path
-
-cells = []
-
-
-def md(text):
-    cells.append({"cell_type": "markdown", "metadata": {}, "source": text.strip("\n").splitlines(keepends=True)})
-
-
-def code(text):
-    cells.append({
-        "cell_type": "code", "metadata": {}, "execution_count": None, "outputs": [],
-        "source": text.strip("\n").splitlines(keepends=True),
-    })
-
-
-md("""
 # Lab 18b - Does the answer lexicon explain the gap?
 
 Lab 18 returned a null. Dataset G moved the 620-state battery from 90/620 to
@@ -36,9 +16,7 @@ time.
 This lab trains nothing. It scores every one of the 2,315 answer words under each
 existing adapter and asks what the policy looks like when the lexicon is imposed
 at decode time instead of left to the model.
-""")
 
-md("""
 ## 18b.1 Pre-registered experiment
 
 **Hypothesis.** If the answer lexicon is imposed at decode time, state-conditioned
@@ -102,9 +80,7 @@ comparison is paired: flip counts, paired bootstrap 95% CI, and exact McNemar.
 game. Tier 1 removes an entire failure mode by fiat. A positive result licenses
 changing the evaluation and decoding interface, not a claim about the policy's
 unaided competence.
-""")
 
-md("""
 ## 18b.2 Run controls and memory guard
 
 Three labs in this project have hit unbounded memory growth on MPS, and the last
@@ -119,12 +95,12 @@ consuming the machine.
 Layer 2 lives outside this notebook. Run it through the watchdog, never bare:
 
 ```
-scripts/memguard.py -- uv run jupyter nbconvert --to notebook --execute --inplace \\
+scripts/memguard.py -- uv run jupyter nbconvert --to notebook --execute --inplace \
     notebooks/18b_constrained_ranking_probe.ipynb
 ```
-""")
 
-code("""
+
+```python
 RUN_SCORING = True
 SCORE_B_RAW = False  # optional, needs the raw interface and doubles nothing else
 
@@ -142,9 +118,16 @@ if torch.backends.mps.is_available():
 
 print("RUN_SCORING:", RUN_SCORING)
 print("SCORE_B_RAW:", SCORE_B_RAW)
-""")
+```
 
-code("""
+    MPS cap: 128 GiB of 464 GiB
+    past the cap PyTorch raises RuntimeError instead of taking the host down
+    RUN_SCORING: True
+    SCORE_B_RAW: False
+
+
+
+```python
 from collections import defaultdict
 from pathlib import Path
 import gc
@@ -188,18 +171,20 @@ def driver_memory_gib() -> float:
     if device.type == "cuda":
         return torch.cuda.memory_allocated() / 1024**3
     return float("nan")
-""")
+```
 
-md("""
+    device: mps
+
+
 ## 18b.3 Reuse the Lab 17 structured representation verbatim
 
 These functions are copied unchanged from Labs 17 and 18. The prompts this lab
 scores must be byte-identical to the prompts the adapters were trained on and
 were evaluated on in Lab 18, so the representation is rebuilt through the same
 `raw_policy_prompt` plus `transform_prompt` path rather than written afresh.
-""")
 
-code("""
+
+```python
 ANSWERS = [
     line.strip().upper()
     for line in (DATA_DIR / "wordle-answers-original.txt").read_text().splitlines()
@@ -280,7 +265,7 @@ def render_structured_state(history: list[Turn], candidate_count: int) -> str:
         positions = ",".join(map(str, state["excluded"][letter]))
         excluded.append(f"{letter}@{positions}")
 
-    return "\\n".join([
+    return "\n".join([
         f"GREENS: {greens}",
         f"LETTER_COUNTS: {', '.join(counts) or 'NONE'}",
         f"EXCLUDED_POSITIONS: {', '.join(excluded) or 'NONE'}",
@@ -292,37 +277,36 @@ def render_structured_state(history: list[Turn], candidate_count: int) -> str:
 
 def raw_policy_prompt(state_key: str) -> str:
     return (
-        "Task: NEXT_GUESS\\nYou are playing Wordle.\\n"
-        "Use the game history to choose the next guess.\\n"
-        "Return exactly one uppercase five-letter word.\\n\\n"
-        f"History:\\n{state_key}"
+        "Task: NEXT_GUESS\nYou are playing Wordle.\n"
+        "Use the game history to choose the next guess.\n"
+        "Return exactly one uppercase five-letter word.\n\n"
+        f"History:\n{state_key}"
     )
 
 
 def transform_prompt(prompt: str, state_key: str, candidate_count: int) -> str:
-    marker = "\\n\\nHistory:\\n"
+    marker = "\n\nHistory:\n"
     prefix, remainder = prompt.split(marker, 1)
-    if "\\n\\n" in remainder:
-        raw_history, suffix = remainder.split("\\n\\n", 1)
-        suffix = "\\n\\n" + suffix
+    if "\n\n" in remainder:
+        raw_history, suffix = remainder.split("\n\n", 1)
+        suffix = "\n\n" + suffix
     else:
         raw_history, suffix = remainder, ""
     assert raw_history == state_key
     history = parse_state_key(state_key)
-    return prefix + "\\n\\nDerived state:\\n" + render_structured_state(
+    return prefix + "\n\nDerived state:\n" + render_structured_state(
         history, candidate_count
     ) + suffix
-""")
+```
 
-md("""
 ## 18b.4 Rebuild the exact 620-state battery
 
 The battery is read back from the Lab 18 result artifacts rather than
 regenerated, which guarantees the same states in the same order. The Lab 18
 free-generation outcomes come along as the Tier 0 baseline.
-""")
 
-code("""
+
+```python
 b_tier0 = pd.read_csv(LAB18_RESULTS / "b-state-battery-results.csv")
 g_tier0 = pd.read_csv(LAB18_RESULTS / "state-battery-results.csv")
 assert len(b_tier0) == len(g_tier0) == 620
@@ -371,9 +355,147 @@ display(pd.DataFrame([
     }
     for name, frame in [("B-structured", b_tier0), ("G-structured", g_tier0)]
 ]))
-""")
+```
 
-md("""
+    battery states: 620
+    mean candidates: 7.4
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th>candidate_bucket</th>
+      <th>1-2</th>
+      <th>11-50</th>
+      <th>201+</th>
+      <th>3-10</th>
+      <th>51-200</th>
+    </tr>
+    <tr>
+      <th>turn</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>2</th>
+      <td>6</td>
+      <td>12</td>
+      <td>2</td>
+      <td>10</td>
+      <td>6</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>96</td>
+      <td>39</td>
+      <td>0</td>
+      <td>206</td>
+      <td>1</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>149</td>
+      <td>0</td>
+      <td>0</td>
+      <td>53</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>33</td>
+      <td>0</td>
+      <td>0</td>
+      <td>2</td>
+      <td>0</td>
+    </tr>
+    <tr>
+      <th>6</th>
+      <td>4</td>
+      <td>0</td>
+      <td>0</td>
+      <td>1</td>
+      <td>0</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+    
+    Tier 0 (free generation, from Lab 18)
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>model</th>
+      <th>format_valid</th>
+      <th>in_answer_lexicon</th>
+      <th>history_consistent</th>
+      <th>usable</th>
+      <th>teacher_match</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>B-structured</td>
+      <td>0.927419</td>
+      <td>0.461290</td>
+      <td>0.145161</td>
+      <td>0.145161</td>
+      <td>0.074194</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>G-structured</td>
+      <td>0.885484</td>
+      <td>0.477419</td>
+      <td>0.159677</td>
+      <td>0.159677</td>
+      <td>0.077419</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
 ## 18b.5 Tokenize the answer lexicon
 
 Training used `render_prompt(prompt) + response + eos_token` tokenized as one
@@ -385,9 +507,9 @@ Words are bucketed by token length. A word of `L` tokens needs only `L-1`
 forwarded positions, because the first token's distribution comes from the
 prompt's final position. That drops the work from 9,260 scored positions per
 state to 5,246.
-""")
 
-code("""
+
+```python
 tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
 
 
@@ -433,9 +555,16 @@ for length in sorted({len(t) for t in WORD_TOKENS}):
         torch.tensor([WORD_TOKENS[i] for i in padded], device=device),
     )
 print("buckets:", {k: int(v[0].shape[0]) for k, v in LENGTH_BUCKETS.items()})
-""")
+```
 
-md("""
+    word+eos token lengths:
+    2     156
+    3    1387
+    4     772
+    scored positions per state: 5246 of 9260 naive
+    buckets: {2: 256, 3: 1536, 4: 1024}
+
+
 ## 18b.6 Scoring engine
 
 One prompt forward per state produces a KV cache, which is expanded once to the
@@ -494,9 +623,9 @@ regression test:
    full-size copy of the chunk logits.
 4. Peaks sampled inside the chunk loop, not between states, so the number the
    soak gate checks is the number that can actually trip the cap.
-""")
 
-code("""
+
+```python
 def load_model(path: Path | None):
     base = AutoModelForCausalLM.from_pretrained(MODEL_ID, dtype=torch.float32).to(device)
     if path is None:
@@ -519,7 +648,7 @@ LAST_STATE_PEAK_GIB = 0.0
 
 @torch.no_grad()
 def score_all_words(model, prompt_text: str) -> np.ndarray:
-    \"\"\"Summed log P(word + EOS | prompt) for all 2,315 answers.\"\"\"
+    """Summed log P(word + EOS | prompt) for all 2,315 answers."""
     global LAST_STATE_PEAK_GIB
     input_ids = tokenizer(
         render_prompt(prompt_text), return_tensors="pt", add_special_tokens=False
@@ -591,9 +720,8 @@ def score_battery(model, prompt_column: str, label: str) -> np.ndarray:
         f" peak {peak_memory:.2f} GiB"
     )
     return matrix
-""")
+```
 
-md("""
 ### Kernel correctness and memory soak
 
 The chunked kernel is verified against a plain single-sequence forward pass on a
@@ -601,9 +729,9 @@ handful of words, then soaked for 60 repetitions of one fixed worst-case prompt
 with the memory trace asserted flat. Both gates run before any full battery is
 scored. If the soak fails the notebook stops here rather than continuing into
 the run that previously killed the host.
-""")
 
-code("""
+
+```python
 @torch.no_grad()
 def score_one_word_reference(model, prompt_text: str, word_index: int) -> float:
     prompt_ids = tokenizer(
@@ -661,7 +789,7 @@ if RUN_SCORING:
 
     SOAK_STATES = 60
     print(
-        f"\\nmemory soak: fixed {fixed_prompt_tokens}-token prompt, "
+        f"\nmemory soak: fixed {fixed_prompt_tokens}-token prompt, "
         f"{SOAK_STATES} repetitions"
     )
     peaks = []
@@ -713,11 +841,94 @@ if RUN_SCORING:
         f" {MEMORY_ABORT_GIB:.1f} GiB"
     )
     print("  working set plateaued and within headroom, safe to score the full battery")
-""")
+```
 
-md("## 18b.7 Score every model")
 
-code("""
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>word</th>
+      <th>chunked</th>
+      <th>reference</th>
+      <th>abs_diff</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>ABACK</td>
+      <td>-22.005051</td>
+      <td>-22.005041</td>
+      <td>0.000010</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>ABLED</td>
+      <td>-20.635523</td>
+      <td>-20.635511</td>
+      <td>0.000011</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>HUMAN</td>
+      <td>-13.124020</td>
+      <td>-13.124040</td>
+      <td>0.000020</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>PURSE</td>
+      <td>-23.597862</td>
+      <td>-23.597805</td>
+      <td>0.000057</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>ZONAL</td>
+      <td>-21.232304</td>
+      <td>-21.232281</td>
+      <td>0.000023</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+    kernel verified
+    
+    memory soak: fixed 178-token prompt, 60 repetitions
+
+
+      per-state peak: first 54.77 GiB, max 54.77 GiB
+      middle third mean 54.77 GiB, final third mean 54.77 GiB, creep +0.00 GiB, final range 0.00 GiB
+      10 longest prompts in battery: max 54.77 GiB
+      cap 128 GiB, headroom 2.3x
+      working set plateaued and within headroom, safe to score the full battery
+
+
+## 18b.7 Score every model
+
+
+```python
 SCORING_MODELS = [
     ("base", None, "structured_prompt"),
     ("B-structured", B_STRUCTURED_CHECKPOINT, "structured_prompt"),
@@ -744,9 +955,104 @@ else:
     print("loaded cached score matrices")
 
 print({label: matrix.shape for label, matrix in score_matrices.items()})
-""")
+```
 
-md("""
+    scoring base ...
+
+
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+      base    0/620  2.87s/state  peak 33.76 GiB
+
+
+      base  100/620  3.33s/state  peak 54.75 GiB
+
+
+      base  200/620  3.30s/state  peak 54.75 GiB
+
+
+      base  300/620  3.33s/state  peak 54.75 GiB
+
+
+      base  400/620  3.34s/state  peak 54.75 GiB
+
+
+      base  500/620  3.35s/state  peak 54.75 GiB
+
+
+      base  600/620  3.39s/state  peak 54.76 GiB
+
+
+      base done in 35.0 min, peak 54.76 GiB
+
+
+    scoring B-structured ...
+
+
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+      B-structured    0/620  2.86s/state  peak 33.77 GiB
+
+
+      B-structured  100/620  3.38s/state  peak 54.76 GiB
+
+
+      B-structured  200/620  3.36s/state  peak 54.76 GiB
+
+
+      B-structured  300/620  3.39s/state  peak 54.76 GiB
+
+
+      B-structured  400/620  3.40s/state  peak 54.76 GiB
+
+
+      B-structured  500/620  3.42s/state  peak 54.76 GiB
+
+
+      B-structured  600/620  3.45s/state  peak 54.77 GiB
+
+
+      B-structured done in 35.7 min, peak 54.77 GiB
+
+
+    scoring G-structured ...
+
+
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+      G-structured    0/620  2.91s/state  peak 33.77 GiB
+
+
+      G-structured  100/620  3.38s/state  peak 54.76 GiB
+
+
+      G-structured  200/620  3.37s/state  peak 54.76 GiB
+
+
+      G-structured  300/620  3.40s/state  peak 54.76 GiB
+
+
+      G-structured  400/620  3.41s/state  peak 54.76 GiB
+
+
+      G-structured  500/620  3.43s/state  peak 54.76 GiB
+
+
+      G-structured  600/620  3.46s/state  peak 54.77 GiB
+
+
+      G-structured done in 35.8 min, peak 54.77 GiB
+
+
+    {'base': (620, 2315), 'B-structured': (620, 2315), 'G-structured': (620, 2315)}
+
+
 ## 18b.8 Tier 1 and Tier 2
 
 Tier 1 takes the top-scoring word over the whole answer list. Format validity and
@@ -757,9 +1063,9 @@ Tier 2 restricts the argmax to the consistent candidate set. Consistency is then
 guaranteed, so teacher match is the only informative metric, and it measures
 whether the model prefers the entropy-optimal legal word over the other legal
 words.
-""")
 
-code("""
+
+```python
 CANDIDATE_INDICES = [
     np.array([WORD_TO_INDEX[word] for word in candidates], dtype=np.int64)
     for candidates in battery["candidates"]
@@ -842,16 +1148,89 @@ headline = tier_results.groupby("model", sort=False).agg(
 )
 headline.insert(1, "tier0_usable", headline.index.map(tier0_rates))
 display(headline)
-""")
+```
 
-md("""
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>states</th>
+      <th>tier0_usable</th>
+      <th>tier1_consistency</th>
+      <th>tier1_usable</th>
+      <th>tier1_teacher_match</th>
+      <th>tier2_teacher_match</th>
+      <th>tier2_chance</th>
+    </tr>
+    <tr>
+      <th>model</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>base</th>
+      <td>620</td>
+      <td>NaN</td>
+      <td>0.001613</td>
+      <td>0.001613</td>
+      <td>0.000000</td>
+      <td>0.522581</td>
+      <td>0.521896</td>
+    </tr>
+    <tr>
+      <th>B-structured</th>
+      <td>620</td>
+      <td>0.145161</td>
+      <td>0.303226</td>
+      <td>0.303226</td>
+      <td>0.167742</td>
+      <td>0.574194</td>
+      <td>0.521896</td>
+    </tr>
+    <tr>
+      <th>G-structured</th>
+      <td>620</td>
+      <td>0.159677</td>
+      <td>0.300000</td>
+      <td>0.300000</td>
+      <td>0.161290</td>
+      <td>0.545161</td>
+      <td>0.521896</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
 ### Tier 1 versus Tier 0, the primary comparison
 
 Same 620 states, same model, one interface change. This is the number the lab was
 built to produce.
-""")
 
-code("""
+
+```python
 def wilson_interval(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
     if trials == 0:
         return (float("nan"), float("nan"))
@@ -917,16 +1296,144 @@ for label, tier0_frame in [("B-structured", b_tier0), ("G-structured", g_tier0)]
 
 tier0_vs_tier1 = pd.DataFrame(comparisons)
 display(tier0_vs_tier1)
-""")
+```
 
-md("""
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>comparison</th>
+      <th>states</th>
+      <th>left_rate</th>
+      <th>right_rate</th>
+      <th>delta</th>
+      <th>delta_ci_low</th>
+      <th>delta_ci_high</th>
+      <th>left_only</th>
+      <th>right_only</th>
+      <th>both</th>
+      <th>neither</th>
+      <th>exact_p_value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>B-structured: tier0 -&gt; tier1 usable</td>
+      <td>620</td>
+      <td>0.145161</td>
+      <td>0.303226</td>
+      <td>0.158065</td>
+      <td>0.125806</td>
+      <td>0.190323</td>
+      <td>10</td>
+      <td>108</td>
+      <td>80</td>
+      <td>422</td>
+      <td>6.450875e-22</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>B-structured: tier0 -&gt; tier1 history_consistent</td>
+      <td>620</td>
+      <td>0.145161</td>
+      <td>0.303226</td>
+      <td>0.158065</td>
+      <td>0.125806</td>
+      <td>0.190323</td>
+      <td>10</td>
+      <td>108</td>
+      <td>80</td>
+      <td>422</td>
+      <td>6.450875e-22</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>B-structured: tier0 -&gt; tier1 teacher_match</td>
+      <td>620</td>
+      <td>0.074194</td>
+      <td>0.167742</td>
+      <td>0.093548</td>
+      <td>0.069355</td>
+      <td>0.119355</td>
+      <td>5</td>
+      <td>63</td>
+      <td>41</td>
+      <td>511</td>
+      <td>7.651063e-14</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>G-structured: tier0 -&gt; tier1 usable</td>
+      <td>620</td>
+      <td>0.159677</td>
+      <td>0.300000</td>
+      <td>0.140323</td>
+      <td>0.108065</td>
+      <td>0.172581</td>
+      <td>14</td>
+      <td>101</td>
+      <td>85</td>
+      <td>420</td>
+      <td>1.982660e-17</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>G-structured: tier0 -&gt; tier1 history_consistent</td>
+      <td>620</td>
+      <td>0.159677</td>
+      <td>0.300000</td>
+      <td>0.140323</td>
+      <td>0.108065</td>
+      <td>0.172581</td>
+      <td>14</td>
+      <td>101</td>
+      <td>85</td>
+      <td>420</td>
+      <td>1.982660e-17</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>G-structured: tier0 -&gt; tier1 teacher_match</td>
+      <td>620</td>
+      <td>0.077419</td>
+      <td>0.161290</td>
+      <td>0.083871</td>
+      <td>0.059677</td>
+      <td>0.109677</td>
+      <td>8</td>
+      <td>60</td>
+      <td>40</td>
+      <td>512</td>
+      <td>5.747761e-11</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
 ### Does the adapter beat the base model under the same constraint?
 
 If `base` ranks as well as the adapters, the lexicon restriction did the work and
 the fine-tuning added nothing that survives constrained decoding.
-""")
 
-code("""
+
+```python
 base_vs_adapter = []
 base_tier = tier_indexed.loc["base"].loc[list(battery["state_key"])]
 for label in [name for name, _, _ in SCORING_MODELS if name != "base"]:
@@ -936,9 +1443,137 @@ for label in [name for name, _, _ in SCORING_MODELS if name != "base"]:
             base_tier[metric], adapter_tier[metric], f"base -> {label}: {metric}"
         ))
 display(pd.DataFrame(base_vs_adapter))
-""")
+```
 
-md("""
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>comparison</th>
+      <th>states</th>
+      <th>left_rate</th>
+      <th>right_rate</th>
+      <th>delta</th>
+      <th>delta_ci_low</th>
+      <th>delta_ci_high</th>
+      <th>left_only</th>
+      <th>right_only</th>
+      <th>both</th>
+      <th>neither</th>
+      <th>exact_p_value</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>base -&gt; B-structured: tier1_usable</td>
+      <td>620</td>
+      <td>0.001613</td>
+      <td>0.303226</td>
+      <td>0.301613</td>
+      <td>0.266129</td>
+      <td>0.338710</td>
+      <td>0</td>
+      <td>187</td>
+      <td>1</td>
+      <td>432</td>
+      <td>1.019579e-56</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>base -&gt; B-structured: tier1_teacher_match</td>
+      <td>620</td>
+      <td>0.000000</td>
+      <td>0.167742</td>
+      <td>0.167742</td>
+      <td>0.138710</td>
+      <td>0.198387</td>
+      <td>0</td>
+      <td>104</td>
+      <td>0</td>
+      <td>516</td>
+      <td>9.860761e-32</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>base -&gt; B-structured: tier2_teacher_match</td>
+      <td>620</td>
+      <td>0.522581</td>
+      <td>0.574194</td>
+      <td>0.051613</td>
+      <td>0.014516</td>
+      <td>0.088710</td>
+      <td>51</td>
+      <td>83</td>
+      <td>273</td>
+      <td>213</td>
+      <td>7.178115e-03</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>base -&gt; G-structured: tier1_usable</td>
+      <td>620</td>
+      <td>0.001613</td>
+      <td>0.300000</td>
+      <td>0.298387</td>
+      <td>0.262903</td>
+      <td>0.333871</td>
+      <td>0</td>
+      <td>185</td>
+      <td>1</td>
+      <td>434</td>
+      <td>4.078315e-56</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>base -&gt; G-structured: tier1_teacher_match</td>
+      <td>620</td>
+      <td>0.000000</td>
+      <td>0.161290</td>
+      <td>0.161290</td>
+      <td>0.133871</td>
+      <td>0.190323</td>
+      <td>0</td>
+      <td>100</td>
+      <td>0</td>
+      <td>520</td>
+      <td>1.577722e-30</td>
+    </tr>
+    <tr>
+      <th>5</th>
+      <td>base -&gt; G-structured: tier2_teacher_match</td>
+      <td>620</td>
+      <td>0.522581</td>
+      <td>0.545161</td>
+      <td>0.022581</td>
+      <td>-0.012903</td>
+      <td>0.058065</td>
+      <td>52</td>
+      <td>66</td>
+      <td>272</td>
+      <td>230</td>
+      <td>2.312657e-01</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
 ## 18b.9 Distributional readouts
 
 Argmax discards almost everything the model expressed. These readouts use the
@@ -955,9 +1590,9 @@ is not dominated by one word.
 winner-take-all: real log-likelihoods span tens of nats, so the softmax
 concentrates on a couple of words and the lift behaves almost like a restatement
 of Tier 1. Read the percentile first.
-""")
 
-code("""
+
+```python
 rank_summary = tier_results.groupby("model", sort=False).agg(
     median_teacher_rank=("teacher_rank", "median"),
     mean_reciprocal_rank=("teacher_reciprocal_rank", "mean"),
@@ -988,17 +1623,352 @@ display(tier_results.groupby(["model", "candidate_bucket"], observed=True, sort=
     mean_candidate_rank_percentile=("candidate_rank_percentile", "mean"),
     median_best_candidate_rank=("best_candidate_rank", "median"),
 ).round(4))
-""")
+```
 
-md("""
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>median_teacher_rank</th>
+      <th>mean_reciprocal_rank</th>
+      <th>median_best_candidate_rank</th>
+      <th>mean_candidate_rank_percentile</th>
+      <th>median_mass_lift</th>
+      <th>mean_candidate_mass</th>
+      <th>teacher_top1</th>
+      <th>teacher_top5</th>
+      <th>teacher_top10</th>
+      <th>teacher_top50</th>
+      <th>teacher_top100</th>
+    </tr>
+    <tr>
+      <th>model</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>base</th>
+      <td>861.0</td>
+      <td>0.005614</td>
+      <td>390.5</td>
+      <td>0.432916</td>
+      <td>0.003096</td>
+      <td>0.001794</td>
+      <td>0.000000</td>
+      <td>0.003226</td>
+      <td>0.004839</td>
+      <td>0.048387</td>
+      <td>0.091935</td>
+    </tr>
+    <tr>
+      <th>B-structured</th>
+      <td>9.0</td>
+      <td>0.286921</td>
+      <td>3.0</td>
+      <td>0.028345</td>
+      <td>60.979155</td>
+      <td>0.187974</td>
+      <td>0.167742</td>
+      <td>0.414516</td>
+      <td>0.533871</td>
+      <td>0.791935</td>
+      <td>0.866129</td>
+    </tr>
+    <tr>
+      <th>G-structured</th>
+      <td>10.0</td>
+      <td>0.272507</td>
+      <td>4.0</td>
+      <td>0.031830</td>
+      <td>57.651174</td>
+      <td>0.186717</td>
+      <td>0.161290</td>
+      <td>0.375806</td>
+      <td>0.501613</td>
+      <td>0.785484</td>
+      <td>0.875806</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+    Tier 1 output diversity (state-blindness check)
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>distinct_tier1_words</th>
+      <th>most_common_word</th>
+      <th>most_common_share</th>
+    </tr>
+    <tr>
+      <th>model</th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>base</th>
+      <td>12</td>
+      <td>GREEN</td>
+      <td>0.396774</td>
+    </tr>
+    <tr>
+      <th>B-structured</th>
+      <td>342</td>
+      <td>CABLE</td>
+      <td>0.019355</td>
+    </tr>
+    <tr>
+      <th>G-structured</th>
+      <td>348</td>
+      <td>FLAKE</td>
+      <td>0.017742</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+    By candidate bucket
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th></th>
+      <th>states</th>
+      <th>tier1_usable</th>
+      <th>tier2_teacher_match</th>
+      <th>tier2_chance</th>
+      <th>mean_candidate_rank_percentile</th>
+      <th>median_best_candidate_rank</th>
+    </tr>
+    <tr>
+      <th>model</th>
+      <th>candidate_bucket</th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th rowspan="5" valign="top">base</th>
+      <th>11-50</th>
+      <td>51</td>
+      <td>0.0000</td>
+      <td>0.0784</td>
+      <td>0.0616</td>
+      <td>0.5165</td>
+      <td>144.0</td>
+    </tr>
+    <tr>
+      <th>3-10</th>
+      <td>272</td>
+      <td>0.0000</td>
+      <td>0.2537</td>
+      <td>0.2439</td>
+      <td>0.4542</td>
+      <td>327.0</td>
+    </tr>
+    <tr>
+      <th>1-2</th>
+      <td>288</td>
+      <td>0.0000</td>
+      <td>0.8681</td>
+      <td>0.8819</td>
+      <td>0.3948</td>
+      <td>626.0</td>
+    </tr>
+    <tr>
+      <th>51-200</th>
+      <td>7</td>
+      <td>0.0000</td>
+      <td>0.1429</td>
+      <td>0.0134</td>
+      <td>0.5436</td>
+      <td>44.0</td>
+    </tr>
+    <tr>
+      <th>201+</th>
+      <td>2</td>
+      <td>0.5000</td>
+      <td>0.0000</td>
+      <td>0.0014</td>
+      <td>0.5086</td>
+      <td>6.5</td>
+    </tr>
+    <tr>
+      <th rowspan="5" valign="top">B-structured</th>
+      <th>11-50</th>
+      <td>51</td>
+      <td>0.3137</td>
+      <td>0.0980</td>
+      <td>0.0616</td>
+      <td>0.0728</td>
+      <td>2.0</td>
+    </tr>
+    <tr>
+      <th>3-10</th>
+      <td>272</td>
+      <td>0.3419</td>
+      <td>0.3272</td>
+      <td>0.2439</td>
+      <td>0.0302</td>
+      <td>3.0</td>
+    </tr>
+    <tr>
+      <th>1-2</th>
+      <td>288</td>
+      <td>0.2569</td>
+      <td>0.9097</td>
+      <td>0.8819</td>
+      <td>0.0137</td>
+      <td>4.0</td>
+    </tr>
+    <tr>
+      <th>51-200</th>
+      <td>7</td>
+      <td>0.4286</td>
+      <td>0.0000</td>
+      <td>0.0134</td>
+      <td>0.1562</td>
+      <td>4.0</td>
+    </tr>
+    <tr>
+      <th>201+</th>
+      <td>2</td>
+      <td>1.0000</td>
+      <td>0.0000</td>
+      <td>0.0014</td>
+      <td>0.2968</td>
+      <td>1.0</td>
+    </tr>
+    <tr>
+      <th rowspan="5" valign="top">G-structured</th>
+      <th>11-50</th>
+      <td>51</td>
+      <td>0.2941</td>
+      <td>0.0784</td>
+      <td>0.0616</td>
+      <td>0.0858</td>
+      <td>3.0</td>
+    </tr>
+    <tr>
+      <th>3-10</th>
+      <td>272</td>
+      <td>0.3456</td>
+      <td>0.2647</td>
+      <td>0.2439</td>
+      <td>0.0335</td>
+      <td>3.0</td>
+    </tr>
+    <tr>
+      <th>1-2</th>
+      <td>288</td>
+      <td>0.2535</td>
+      <td>0.9097</td>
+      <td>0.8819</td>
+      <td>0.0151</td>
+      <td>5.0</td>
+    </tr>
+    <tr>
+      <th>51-200</th>
+      <td>7</td>
+      <td>0.4286</td>
+      <td>0.0000</td>
+      <td>0.0134</td>
+      <td>0.1792</td>
+      <td>4.0</td>
+    </tr>
+    <tr>
+      <th>201+</th>
+      <td>2</td>
+      <td>0.5000</td>
+      <td>0.0000</td>
+      <td>0.0014</td>
+      <td>0.3290</td>
+      <td>1.5</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
 ### Is Tier 2 above chance?
 
 A model that has learned nothing about which legal word is best still scores
 `1 / candidates` by picking arbitrarily. The comparison below is against that
 per-state chance rate, summed into an expected count, not against zero.
-""")
 
-code("""
+
+```python
 tier2_rows = []
 for label in score_matrices:
     frame = tier_indexed.loc[label]
@@ -1019,18 +1989,89 @@ for label in score_matrices:
         "ci_high": high,
     })
 display(pd.DataFrame(tier2_rows))
-""")
+```
 
-md("""
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>model</th>
+      <th>states</th>
+      <th>tier2_correct</th>
+      <th>chance_expected</th>
+      <th>lift_over_chance</th>
+      <th>z_vs_chance</th>
+      <th>rate</th>
+      <th>ci_low</th>
+      <th>ci_high</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>base</td>
+      <td>620</td>
+      <td>324</td>
+      <td>323.6</td>
+      <td>1.001312</td>
+      <td>0.051327</td>
+      <td>0.522581</td>
+      <td>0.483245</td>
+      <td>0.561638</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>B-structured</td>
+      <td>620</td>
+      <td>356</td>
+      <td>323.6</td>
+      <td>1.100207</td>
+      <td>3.920974</td>
+      <td>0.574194</td>
+      <td>0.534932</td>
+      <td>0.612541</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>G-structured</td>
+      <td>620</td>
+      <td>338</td>
+      <td>323.6</td>
+      <td>1.044578</td>
+      <td>1.744297</td>
+      <td>0.545161</td>
+      <td>0.505806</td>
+      <td>0.583960</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
 ### Sensitivity: length-normalized scoring
 
 Answer words tokenize into 1, 2, or 3 tokens, so summed log-probability slightly
 favours shorter tokenizations. Summed likelihood stays primary because it is what
 a constrained decoder maximizes, but if the normalized ranking tells a different
 story that belongs in the write-up.
-""")
 
-code("""
+
+```python
 TOKEN_LENGTHS = np.array([len(t) for t in WORD_TOKENS], dtype=np.float32)
 
 normalized_rows = []
@@ -1052,11 +2093,68 @@ for label, matrix in score_matrices.items():
         "normalized_tier1_teacher_match": float(np.mean(teacher)),
     })
 display(pd.DataFrame(normalized_rows).round(4))
-""")
+```
 
-md("## 18b.10 Persist results")
 
-code("""
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>model</th>
+      <th>summed_tier1_usable</th>
+      <th>normalized_tier1_usable</th>
+      <th>summed_tier1_teacher_match</th>
+      <th>normalized_tier1_teacher_match</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>base</td>
+      <td>0.0016</td>
+      <td>0.0016</td>
+      <td>0.0000</td>
+      <td>0.0000</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>B-structured</td>
+      <td>0.3032</td>
+      <td>0.3113</td>
+      <td>0.1677</td>
+      <td>0.1710</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>G-structured</td>
+      <td>0.3000</td>
+      <td>0.3048</td>
+      <td>0.1613</td>
+      <td>0.1645</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+## 18b.10 Persist results
+
+
+```python
 tier_results.to_csv(RESULTS_DIR / "tier-results.csv", index=False)
 tier0_vs_tier1.to_csv(RESULTS_DIR / "tier0-vs-tier1-paired.csv", index=False)
 pd.DataFrame(base_vs_adapter).to_csv(RESULTS_DIR / "base-vs-adapter-paired.csv", index=False)
@@ -1075,9 +2173,12 @@ pd.DataFrame(tier2_rows).to_csv(RESULTS_DIR / "tier2-vs-chance.csv", index=False
 }, indent=2))
 print("written to", RESULTS_DIR)
 print(sorted(p.name for p in RESULTS_DIR.iterdir()))
-""")
+```
 
-md("""
+    written to ../results/lab18b
+    ['answer-order.csv', 'base-vs-adapter-paired.csv', 'battery-states.csv', 'headline-summary.csv', 'lab18b-run.json', 'rank-summary.csv', 'scores-B-structured.npy', 'scores-G-structured.npy', 'scores-base.npy', 'soak-trace.csv', 'tier-results.csv', 'tier0-vs-tier1-paired.csv', 'tier2-vs-chance.csv']
+
+
 ## 18b.11 Read the result against the pre-registration
 
 Fill this in from the tables above without moving the goalposts. The four
@@ -1096,18 +2197,3 @@ Whatever the outcome, Tier 1 removes a failure mode by fiat and says nothing
 about unaided competence. A positive result licenses changing the evaluation and
 decoding interface, and it sets the interface Lab 18c replicates on. It does not
 license a claim that the model can play Wordle.
-""")
-
-notebook = {
-    "cells": cells,
-    "metadata": {
-        "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
-        "language_info": {"name": "python", "version": "3.12"},
-    },
-    "nbformat": 4,
-    "nbformat_minor": 5,
-}
-
-path = Path("notebooks/18b_constrained_ranking_probe.ipynb")
-path.write_text(json.dumps(notebook, indent=1) + "\n")
-print("wrote", path, "with", len(cells), "cells")
