@@ -391,12 +391,31 @@ This lab is not RL. It does not use a critic, trajectory reward, GRPO, or a
 policy-gradient update. The policy still learns from symbolic expert labels.
 The one changed variable is where the new labeled states came from.
 
+### Freeze the rollout contract
+
+Before collection, define the versioned environment-facing interaction contract
+that both Lab 30 and Part IV use:
+
+* policy observation schema and prompt version;
+* action-vocabulary digest and action parser;
+* malformed, out-of-vocabulary, and repeated-action semantics;
+* feedback calculation, turn consumption, and terminal rules;
+* trace fields for policy and decoder versions, history, action, feedback,
+  terminal reason, and data source.
+
+Lab 31 may add the `reset()` and `step()` API plus RL-specific fields, but it
+must preserve this contract. Collector, evaluation, and later stochastic
+training decoders are distinct, versioned policy choices; they do not change
+the environment contract. A later change to an environment-facing semantic
+requires a new version and a complete rerun of the affected Lab 30 arm triplet
+rather than a reinterpretation of its result.
+
 ### Freeze the entry policy and interface
 
 Select the best frozen Part III policy through the existing evidence. Record:
 
 * checkpoint, seed, corpus manifest, and prompt representation;
-* action vocabulary and decoder;
+* action vocabulary, collector decoder, and evaluation decoder;
 * development and held-out answer boundaries;
 * current full-game and action-level results.
 
@@ -406,60 +425,84 @@ answer-only action space instead.
 
 ### Compare matched additional data
 
-Start both arms from the same frozen policy.
+Start all arms from the same frozen policy.
 
 | Arm | New labeled states |
 | --- | --- |
-| `rollout_correction` | States reached during a fixed set of model-driven Wordle games, relabeled by the declared symbolic teacher |
-| `static_control` | Independently sampled expert-generated states, matched to the correction arm's label count, update budget, and input-token exposure |
+| `rollout_correction` | States reached during fixed model-driven Wordle games, relabeled by the declared symbolic teacher |
+| `static_random` | Ordinary expert-generated states sampled without reference to the policy's visited states |
+| `static_matched` | Expert-generated states matched to a policy-visited state by answer branch, turn, and candidate-count stratum |
 
-The primary comparison is label efficiency at a matched added-label and update
-budget. It is not a claim that both arms have identical collection cost:
-`rollout_correction` also spends model calls to generate games. Report model
-calls, generated tokens, teacher calls, wall-clock time, and total training
-cost for both arms.
+The primary comparison is label efficiency at a matched presentation and update
+budget: `rollout_correction - static_random`. It is not a claim that both arms
+have identical collection cost. `rollout_correction` also spends model calls to
+generate games. Report model calls, generated tokens, teacher calls, wall-clock
+time, and total training cost for all three arms.
 
-Both arms draw from one manifested, development-only answer-branch pool.
-For every selected policy-visited state, sample one static expert state from
-the same answer branch and a pre-registered turn and candidate-count stratum.
-When that exact stratum is unavailable, use a deterministic fallback stratum
-declared before sampling. The static state must differ from the policy-visited
-state. Exclude every reserved gameplay branch and record overlap with the base
-corpus and the opposing arm. This keeps answer difficulty and branch assignment
-from becoming an arm-level treatment.
+All arms draw from one manifested, development-only answer-branch pool.
+`static_random` samples its teacher states from that pool without conditioning
+on policy rollouts. For every selected policy-visited state, `static_matched`
+samples a distinct teacher state from the same answer branch and a
+pre-registered turn and candidate-count stratum, excluding every eligible
+rollout-correction state. When that stratum is unavailable, it uses a
+deterministic fallback declared before sampling. Exclude every reserved
+gameplay branch and record overlap with the base corpus and the opposing arms.
 
 For `rollout_correction`:
 
 1. Run the policy through a fixed development-answer set using the declared
    decoder.
 2. Persist every reachable policy state before querying the teacher.
-3. Query the teacher on eligible visited states only after split checks pass.
-4. Report expert disagreement by turn, candidate-count bucket, and failure
-   path.
-5. Train one fixed supervised update budget on those corrections.
+3. Query the teacher once for each eligible unique state after split checks
+   pass, then retain that state's `visit_count`.
+4. Train the primary correction corpus with examples weighted by `visit_count`.
+5. Report unique-state count, visit-weight concentration, any pre-registered
+   per-state cap, expert disagreement by turn and candidate-count bucket, and
+   failure paths.
 
-Both arms use the same optimizer, schedule, base checkpoint, representation,
-action vocabulary, training seed, and held-out evaluation. Reuse the current
-Wordle mechanics to collect the first traces. Part IV later turns that narrow
-collector into a canonical environment interface.
+Pre-register one training-unit protocol before sampling. A training unit is
+one formatted prompt-label presentation, transformed by a frozen truncation
+rule and padded to the frozen maximum input length. Cap each eligible rollout
+state's `visit_count` at a pre-registered integer, then expand the correction
+corpus into that many training units per unique state. Define `N` as the
+resulting unit count. `static_matched` assigns the same capped count to the
+static counterpart of each rollout state. `static_random` draws exactly `N`
+independent units with replacement, uniformly from the pre-manifested pool and
+without rollout conditioning. Thus all primary arms use exactly `N` prompt-label
+presentations and the same formatted-token exposure, batch schedule, optimizer
+updates, and input-token limit. Report unpadded input-token counts as a
+diagnostic.
+
+Within each seed triplet, all arms also use the same base checkpoint,
+representation, action vocabulary, and held-out evaluation. A secondary
+unique-state ablation samples uniformly from the correction corpus's unique
+states to the same `N` presentation units and keeps the same update and token
+budget. Reuse the current Wordle mechanics to collect the first traces. Part
+IV later wraps the frozen rollout contract in a canonical environment
+interface.
 
 ### Pre-register the entry gate
 
 Before collection, record the primary metric, the paired held-out answer
-battery, and the uncertainty method. Train three seed-matched arm pairs.
+battery, and the uncertainty method. Train three seed-matched arm triplets.
 
-The estimand is the mean paired held-out solve-rate difference,
-`rollout_correction - static_control`, across the three seed pairs. Lab 30
-permits the iterative imitation work in Part IV only when all of the following
-hold:
+The primary estimand is the equal-weight mean of the three seed-paired
+held-out solve-rate differences, `rollout_correction - static_random`.
+`static_matched` is a pre-registered diagnostic comparison, not the entry
+gate. For the answer-level paired bootstrap, resample held-out answer IDs with
+replacement while retaining all three arm outcomes for each sampled answer.
+Within each replicate, compute each seed-pair difference and then their
+equal-weight mean; never resample arms independently. Lab 30 permits the
+iterative imitation work in Part IV only when all of the following hold:
 
 * mean paired held-out solve-rate difference is at least five percentage
   points;
-* `rollout_correction` improves over `static_control` in all three seed pairs;
+* `rollout_correction` improves over `static_random` in all three seed pairs;
 * the pooled answer-level paired bootstrap 95% interval excludes zero.
 
-The seed pairs are the replication units. The pooled interval describes the
-fixed answer battery; it is not a population claim.
+The seed pairs are the replication units. The bootstrap interval describes the
+fixed answer battery at those three seed pairs; it is not a population or
+seed-distribution claim.
 
 If the gate fails, preserve the traces and diagnose the null or harmful result.
 Part IV may formalize the environment and analyze those traces, but it does not
@@ -470,9 +513,9 @@ pre-registered replication.
 
 | Result | Interpretation |
 | --- | --- |
-| `rollout_correction` beats `static_control` on held-out full games | Policy-created states carry useful corrective information. Part IV can ask how to learn from interaction with less expert supervision. |
-| Both arms improve equally | More supervised data or updates explain the gain. The source of the state did not matter in this test. |
-| Neither arm improves | The current policy, representation, decoder, or teacher target remains the bottleneck. Do not attribute the result to a missing RL algorithm. |
+| `rollout_correction` beats `static_random`, but matches `static_matched` | Targeting difficult regions of the state space explains most of the gain. |
+| `rollout_correction` beats `static_matched`, which beats `static_random` | Coarse difficulty and residual state-distribution differences beyond the matched branch, turn, and candidate-count strata both add useful corrective information. |
+| All three arms are similar | The on-policy-state hypothesis did not improve this policy under the tested budget. |
 | `rollout_correction` harms behavior | The correction distribution, relabeling rule, or optimization budget caused regression. Inspect it before iterating. |
 
 This lab is the cliffhanger for Part IV. It establishes whether the project has

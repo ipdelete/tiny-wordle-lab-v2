@@ -105,11 +105,11 @@ assignment.
 
 SAO is not the starting implementation target. Its distributed and
 asynchronous systems work is unnecessary for a 0.6B model on one Mac. Part III
-first tests whether model-created states are more useful than label- and
-update-matched static expert data. Part IV then asks whether value learning,
-actor-critic updates, or simulator-based GRPO can improve on expert correction.
-A bounded SAO-style study comes later and must earn its complexity by beating
-simpler baselines under a matched compute budget.
+first tests whether model-created states are more useful than ordinary static
+expert data. Part IV then asks whether value learning, actor-critic updates, or
+simulator-based GRPO can improve on expert correction. A bounded SAO-style
+study comes later and must earn its complexity by beating simpler baselines
+under a matched compute budget.
 
 ## Entry criteria
 
@@ -149,13 +149,18 @@ environment, teacher, or evaluator.
 | --- | --- | --- |
 | Hidden environment state | answer, transition internals, terminal truth | No |
 | Policy observation | declared history, remaining turns, and any explicitly approved public derived features | Only this layer |
-| Action contract | current allowed-guess vocabulary, decoder, action parser | Yes, through the declared decoder |
+| Action contract | current allowed-guess vocabulary, action parser, and legal transition semantics | Yes, through the declared action encoding |
 | Teacher and evaluator | candidates, expert choices, entropy, regret, target values, held-out labels | No, unless a separate representation experiment explicitly exposes a public derived feature |
 
 The simulator may compute a candidate set from public history. Whether the
 policy receives the exact set, a count, or neither is a representation choice.
 Every experiment must name that choice. It cannot quietly become available
 because the environment can compute it.
+
+Collector, evaluation, and stochastic-training decoders belong to a separate,
+versioned rollout-policy configuration. A decoder-only change does not alter
+environment compatibility; it must still be recorded in every trace and
+evaluation comparison.
 
 The first environment adapter must provide:
 
@@ -240,6 +245,9 @@ interface without changing the game rules.
 
 **Work.**
 
+* Implement the Lab 30 environment-facing rollout contract exactly. Version
+  any changed interaction semantics and rerun the affected capstone arm
+  triplet.
 * Implement reset and step around the existing scoring and candidate-filtering
   primitives.
 * Define valid action, invalid action, repeated action, terminal win, terminal
@@ -313,12 +321,30 @@ move the policy into a history that expert-only data never prepared it to read.
 **Goal.** Turn the Part III one-pass correction experiment into a bounded,
 iterative DAgger-style loop only when its result passes the Lab 30 entry gate.
 
-Each iteration freezes the collector policy, collects new rollouts, persists
-eligible visited states, queries the declared teacher, trains one fixed
-supervised budget, and evaluates on the frozen answer set. At every iteration,
-the static control receives the same number of newly labeled expert states,
-matched by the Lab 30 answer-branch and state-stratum rule, and the same
-cumulative update budget.
+Advance all three Lab 30 seed triplets independently. Iteration one starts
+each arm from its own Lab 30 completion checkpoint and cumulative corpus. For
+each triplet, only `rollout_correction` freezes its collector policy, collects
+new rollouts, persists eligible visited states, and queries the declared
+teacher. Apply Lab 30's deduplication, `visit_count` cap, and training-unit
+protocol to produce that triplet's one new treatment count, `N_s`, then append
+those units to the treatment corpus. The static arms do not create
+rollout-derived counts: at the same iteration, append exactly `N_s` newly
+sampled, unconditioned `static_random` units to its corresponding control
+corpus.
+
+Train each arm from its own preceding iteration checkpoint using its cumulative
+corpus. Within a triplet, all arms receive the same cumulative presentation
+count, padded-token budget, batch schedule, and optimizer-update schedule;
+none discards prior units. Evaluate every trained arm on the frozen answer set.
+
+Carry `static_matched` forward only if Lab 30 both passes its primary entry
+gate and shows a pooled answer-level paired bootstrap interval excluding zero
+in favor of `rollout_correction - static_matched`. When that condition holds,
+run `static_matched` in every seed triplet: append a newly sampled same-stratum
+counterpart with the same capped weight for every new treatment state, then
+train its own cumulative corpus and checkpoint under the same schedule. This
+pre-registered diagnostic asks whether the iterative benefit remains after the
+coarse state-distribution control.
 
 The candidate-only teacher, any Part III full-action teacher, and the deployed
 decoder may have different action spaces. Every correction record must identify
