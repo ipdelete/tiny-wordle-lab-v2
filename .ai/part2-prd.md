@@ -321,7 +321,7 @@ This gives us an opportunity to distinguish imitation quality from game quality.
 
 ---
 
-## Lab 19b — Diagnose full-list rank drift
+## Lab 19d — Diagnose full-list rank drift
 
 Lab 19 showed that a model can improve its twelve-action distillation objective
 while becoming worse over the deployed 2,315-answer action space. Before

@@ -35,7 +35,7 @@ a valid restricted comparison because both arms used the same 2,315-word
 answer vocabulary.
 
 Lab 21 supplies the frozen Part II checkpoint, corpus, representation, decoder,
-and failure record. Lab 19b and Lab 20 also establish what happened when the
+and failure record. Lab 19d and Lab 20 also establish what happened when the
 project diagnosed full-list rank drift and corrected policy-created states.
 Part III changes the action-space hypothesis without rewriting those results.
 
