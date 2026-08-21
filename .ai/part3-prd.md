@@ -379,7 +379,155 @@ Record the expected interpretations before training:
 | Solve rate improves but mean turns worsens | Probes improve reliability at the cost of efficiency. Decide which objective the course values. |
 | Both teacher and model improve | Retain the full action space and test it in later trajectory, distillation, full-SFT, or RL work. |
 
+## Lab 30: The experiment that motivates Part IV
+
+Part III ends with one controlled test of the boundary between static
+supervised policy learning and interactive data collection.
+
+**Question.** Does expert correction on states reached by the policy improve
+full-game behavior more than the same amount of additional static expert data?
+
+This lab is not RL. It does not use a critic, trajectory reward, GRPO, or a
+policy-gradient update. The policy still learns from symbolic expert labels.
+The one changed variable is where the new labeled states came from.
+
+### Freeze the rollout contract
+
+Before collection, define the versioned environment-facing interaction contract
+that both Lab 30 and Part IV use:
+
+* policy observation schema and prompt version;
+* action-vocabulary digest and action parser;
+* malformed, out-of-vocabulary, and repeated-action semantics;
+* feedback calculation, turn consumption, and terminal rules;
+* trace fields for policy and decoder versions, history, action, feedback,
+  terminal reason, and data source.
+
+Lab 31 may add the `reset()` and `step()` API plus RL-specific fields, but it
+must preserve this contract. Collector, evaluation, and later stochastic
+training decoders are distinct, versioned policy choices; they do not change
+the environment contract. A later change to an environment-facing semantic
+requires a new version and a complete rerun of the affected Lab 30 arm triplet
+rather than a reinterpretation of its result.
+
+### Freeze the entry policy and interface
+
+Select the best frozen Part III policy through the existing evidence. Record:
+
+* checkpoint, seed, corpus manifest, and prompt representation;
+* action vocabulary, collector decoder, and evaluation decoder;
+* development and held-out answer boundaries;
+* current full-game and action-level results.
+
+The experiment keeps those choices fixed. If Part III finds that the expanded
+action space does not transfer to the model, this lab uses the retained
+answer-only action space instead.
+
+### Compare matched additional data
+
+Start all arms from the same frozen policy.
+
+| Arm | New labeled states |
+| --- | --- |
+| `rollout_correction` | States reached during fixed model-driven Wordle games, relabeled by the declared symbolic teacher |
+| `static_random` | Ordinary expert-generated states sampled without reference to the policy's visited states |
+| `static_matched` | Expert-generated states matched to a policy-visited state by answer branch, turn, and candidate-count stratum |
+
+The primary comparison is label efficiency at a matched presentation and update
+budget: `rollout_correction - static_random`. It is not a claim that both arms
+have identical collection cost. `rollout_correction` also spends model calls to
+generate games. Report model calls, generated tokens, teacher calls, wall-clock
+time, and total training cost for all three arms.
+
+All arms draw from one manifested, development-only answer-branch pool.
+`static_random` samples its teacher states from that pool without conditioning
+on policy rollouts. For every selected policy-visited state, `static_matched`
+samples a distinct teacher state from the same answer branch and a
+pre-registered turn and candidate-count stratum, excluding every eligible
+rollout-correction state. When that stratum is unavailable, it uses a
+deterministic fallback declared before sampling. Exclude every reserved
+gameplay branch and record overlap with the base corpus and the opposing arms.
+
+For `rollout_correction`:
+
+1. Run the policy through a fixed development-answer set using the declared
+   decoder.
+2. Persist every reachable policy state before querying the teacher.
+3. Query the teacher once for each eligible unique state after split checks
+   pass, then retain that state's `visit_count`.
+4. Train the primary correction corpus with examples weighted by `visit_count`.
+5. Report unique-state count, visit-weight concentration, any pre-registered
+   per-state cap, expert disagreement by turn and candidate-count bucket, and
+   failure paths.
+
+Pre-register one training-unit protocol before sampling. A training unit is
+one formatted prompt-label presentation, transformed by a frozen truncation
+rule and padded to the frozen maximum input length. Cap each eligible rollout
+state's `visit_count` at a pre-registered integer, then expand the correction
+corpus into that many training units per unique state. Define `N` as the
+resulting unit count. `static_matched` assigns the same capped count to the
+static counterpart of each rollout state. `static_random` draws exactly `N`
+independent units with replacement, uniformly from the pre-manifested pool and
+without rollout conditioning. Thus all primary arms use exactly `N` prompt-label
+presentations and the same formatted-token exposure, batch schedule, optimizer
+updates, and input-token limit. Report unpadded input-token counts as a
+diagnostic.
+
+Within each seed triplet, all arms also use the same base checkpoint,
+representation, action vocabulary, and held-out evaluation. A secondary
+unique-state ablation samples uniformly from the correction corpus's unique
+states to the same `N` presentation units and keeps the same update and token
+budget. Reuse the current Wordle mechanics to collect the first traces. Part
+IV later wraps the frozen rollout contract in a canonical environment
+interface.
+
+### Pre-register the entry gate
+
+Before collection, record the primary metric, the paired held-out answer
+battery, and the uncertainty method. Train three seed-matched arm triplets.
+
+The primary estimand is the equal-weight mean of the three seed-paired
+held-out solve-rate differences, `rollout_correction - static_random`.
+`static_matched` is a pre-registered diagnostic comparison, not the entry
+gate. For the answer-level paired bootstrap, resample held-out answer IDs with
+replacement while retaining all three arm outcomes for each sampled answer.
+Within each replicate, compute each seed-pair difference and then their
+equal-weight mean; never resample arms independently. Lab 30 permits the
+iterative imitation work in Part IV only when all of the following hold:
+
+* mean paired held-out solve-rate difference is at least five percentage
+  points;
+* `rollout_correction` improves over `static_random` in all three seed pairs;
+* the pooled answer-level paired bootstrap 95% interval excludes zero.
+
+The seed pairs are the replication units. The bootstrap interval describes the
+fixed answer battery at those three seed pairs; it is not a population or
+seed-distribution claim.
+
+If the gate fails, preserve the traces and diagnose the null or harmful result.
+Part IV may formalize the environment and analyze those traces, but it does not
+run iterative imitation or use it as an RL baseline without a separately
+pre-registered replication.
+
+### Decide what the result means
+
+| Result | Interpretation |
+| --- | --- |
+| `rollout_correction` beats `static_random`, but matches `static_matched` | Targeting difficult regions of the state space explains most of the gain. |
+| `rollout_correction` beats `static_matched`, which beats `static_random` | Coarse difficulty and residual state-distribution differences beyond the matched branch, turn, and candidate-count strata both add useful corrective information. |
+| All three arms are similar | The on-policy-state hypothesis did not improve this policy under the tested budget. |
+| `rollout_correction` harms behavior | The correction distribution, relabeling rule, or optimization budget caused regression. Inspect it before iterating. |
+
+This lab is the cliffhanger for Part IV. It establishes whether the project has
+evidence that interaction-created data matters before it adds value learning or
+reinforcement learning.
+
 Part III should not assume that a larger vocabulary is better. It asks whether
 the restricted action space is a real bottleneck, whether removing that
 restriction improves the symbolic policy, and whether the small model can
 learn the improved policy without creating a new failure mode.
+
+Part IV takes the best frozen policy and the Lab 30 outcome, formalizes the
+environment and trace contract, then studies value learning and
+simulator-based policy updates. See
+[Part IV: Learning through interaction](part4-prd.md).
