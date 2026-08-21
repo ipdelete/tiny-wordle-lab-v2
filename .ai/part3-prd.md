@@ -27,22 +27,19 @@ This suggests a follow-on hypothesis:
 
 Part III will test that hypothesis before changing any training corpus.
 
-## Keep the Lab 15 experiment frozen
+## Start from the frozen Part II evidence
 
-Lab 15 compares Dataset A with Dataset B. Both datasets use the same
-candidate-only teacher and the same 2,315-word answer vocabulary. The Lab 15
-metric also uses that answer list when checking model outputs.
+Part III does not revise Dataset B, the structured representation, or the
+recorded Labs 15 through 21 results. Lab 15's `in_answer_lexicon` metric remains
+a valid restricted comparison because both arms used the same 2,315-word
+answer vocabulary.
 
-We will not revise Dataset B or the Lab 15 metric while that experiment is in
-progress. Doing so would change the intervention after preregistration.
+Lab 21 supplies the frozen Part II checkpoint, corpus, representation, decoder,
+and failure record. Lab 19b and Lab 20 also establish what happened when the
+project diagnosed full-list rank drift and corrected policy-created states.
+Part III changes the action-space hypothesis without rewriting those results.
 
-Lab 15 should continue to describe its check as `in_answer_lexicon`. This is a
-known limitation, not an implementation bug. Its result remains useful because
-both models are evaluated under the same restricted rules.
-
-Part III begins after the Dataset A versus Dataset B result is recorded.
-
-## Lab 23: Answer space versus action space
+## Lab 22: Answer space versus action space
 
 This lab corrects the domain model before changing code or data. Students will
 distinguish possible hidden answers from legal player actions and identify
@@ -56,7 +53,7 @@ property rather than the definition of a valid Wordle action.
 The deliverable is a written model of the game state, action space, and
 evaluation properties that later labs will implement.
 
-## Lab 24: Build and verify the original Wordle vocabulary
+## Lab 23: Build and verify the original Wordle vocabulary
 
 The project should retain two explicit files:
 
@@ -160,7 +157,7 @@ The full-action teacher can choose a probe that is not in \(C\). It does not
 change the candidate definition. The hidden answer always remains one of the
 2,315 answer words.
 
-## Lab 25: Compare candidate-only and full-action teachers
+## Lab 24: Compare candidate-only and full-action teachers
 
 ### Define the teacher objective precisely
 
@@ -263,7 +260,7 @@ behavioral diagnostic, but it must not automatically invalidate a legal probe.
 Repeated guesses are also legal in the game, but strategically wasteful. Keep
 legality and policy quality as separate measurements.
 
-## Lab 26: Analyze teacher policy and target learnability
+## Lab 25: Analyze teacher policy and target learnability
 
 A stronger symbolic policy may be a worse curriculum for a 0.6B language
 model. Expanding the action space creates several risks:
@@ -291,7 +288,7 @@ This analysis answers a second question:
 > Does the larger teacher action space produce a policy that this model can
 > plausibly learn?
 
-## Lab 27: Build Dataset C
+## Lab 26: Build Dataset C
 
 Do not regenerate Dataset B in place. It is a frozen Part II artifact.
 
@@ -325,7 +322,7 @@ allowed_guess_list_sha256
 This makes later ablation possible without reconstructing how each target was
 created.
 
-## Lab 28: Test the expanded action space with LoRA
+## Lab 27: Test the expanded action space with LoRA
 
 If Dataset C passes the design checks, compare it with the best frozen Part II
 dataset under the same controls used in Lab 15:
@@ -365,7 +362,7 @@ Evaluate the training prompt and deployment prompt separately. A policy learned
 under the training representation may still fail to transfer through the
 deployment interface.
 
-## Lab 29: Failure analysis and final integration
+## Lab 28: Failure analysis and action-space decision
 
 Record the expected interpretations before training:
 
@@ -379,155 +376,69 @@ Record the expected interpretations before training:
 | Solve rate improves but mean turns worsens | Probes improve reliability at the cost of efficiency. Decide which objective the course values. |
 | Both teacher and model improve | Retain the full action space and test it in later trajectory, distillation, full-SFT, or RL work. |
 
-## Lab 30: The experiment that motivates Part IV
+## Lab 29: Full SFT on the validated supervised recipe
 
-Part III ends with one controlled test of the boundary between static
-supervised policy learning and interactive data collection.
+Full SFT waits until the project has tested data source, representation,
+trajectory structure, action vocabulary, and one-pass policy-state correction.
+It no longer asks the full model to rescue a recipe that LoRA already showed
+was misaligned with gameplay.
 
-**Question.** Does expert correction on states reached by the policy improve
-full-game behavior more than the same amount of additional static expert data?
+Train the entire model using the best supported corpus, representation, and
+action space from Labs 13 through 28. Compare:
 
-This lab is not RL. It does not use a critic, trajectory reward, GRPO, or a
-policy-gradient update. The policy still learns from symbolic expert labels.
-The one changed variable is where the new labeled states came from.
+* the retained LoRA policy;
+* full SFT from the same base checkpoint;
+* the best Lab 20 correction arm when its gate passed;
+* the failed Lab 19 distilled policies as negative controls, not candidate
+  winners.
 
-### Freeze the rollout contract
+Keep source examples, formatted-token exposure, evaluation answers, decoder,
+and gameplay rules fixed wherever the optimization methods permit. Report
+training time, trainable parameter count, checkpoint size, full-game
+performance, full-list ranking quality, and interface validity.
 
-Before collection, define the versioned environment-facing interaction contract
-that both Lab 30 and Part IV use:
+Use early checkpoints. A lower training loss does not authorize the next stage
+when full-list ranking, Turn 2 regret, or singleton closure is deteriorating.
+The experiment stops according to pre-registered gameplay and policy-drift
+rules rather than training loss alone.
 
-* policy observation schema and prompt version;
-* action-vocabulary digest and action parser;
-* malformed, out-of-vocabulary, and repeated-action semantics;
-* feedback calculation, turn consumption, and terminal rules;
-* trace fields for policy and decoder versions, history, action, feedback,
-  terminal reason, and data source.
+The question is:
 
-Lab 31 may add the `reset()` and `step()` API plus RL-specific fields, but it
-must preserve this contract. Collector, evaluation, and later stochastic
-training decoders are distinct, versioned policy choices; they do not change
-the environment contract. A later change to an environment-facing semantic
-requires a new version and a complete rerun of the affected Lab 30 arm triplet
-rather than a reinterpretation of its result.
+> Once the supervised recipe is supported by deployed evidence, what does
+> updating the entire network add beyond LoRA?
 
-### Freeze the entry policy and interface
+## Lab 30: Supervised integration and Part IV entry record
 
-Select the best frozen Part III policy through the existing evidence. Record:
+Part III ends by selecting the policy that later interaction experiments may
+change. Produce one held-out scorecard for every eligible Lab 29 checkpoint and
+the retained Part II baselines.
 
-* checkpoint, seed, corpus manifest, and prompt representation;
-* action vocabulary, collector decoder, and evaluation decoder;
-* development and held-out answer boundaries;
-* current full-game and action-level results.
+The scorecard includes:
 
-The experiment keeps those choices fixed. If Part III finds that the expanded
-action space does not transfer to the model, this lab uses the retained
-answer-only action space instead.
+* solve rate and turns on wins;
+* action validity, history consistency, and repeats;
+* Turn 2 action value and candidate reduction;
+* singleton closure;
+* full-list policy drift;
+* training and inference cost.
 
-### Compare matched additional data
+Record the chosen checkpoint, seed, corpus manifest, prompt representation,
+action vocabulary, collector decoder, evaluation decoder, answer boundaries,
+and failure modes.
 
-Start all arms from the same frozen policy.
+Lab 20 remains the first interaction-created-data gate. If Lab 30 selects a
+policy with a different action vocabulary, representation, or materially
+different full-game behavior, rerun the Lab 20 arm triplet from that policy
+before Part IV begins. The newer preregistered result supersedes the earlier
+gate. If the selected policy is compatible with Lab 20's frozen contract, carry
+the original result forward without manufacturing another training run.
 
-| Arm | New labeled states |
-| --- | --- |
-| `rollout_correction` | States reached during fixed model-driven Wordle games, relabeled by the declared symbolic teacher |
-| `static_random` | Ordinary expert-generated states sampled without reference to the policy's visited states |
-| `static_matched` | Expert-generated states matched to a policy-visited state by answer branch, turn, and candidate-count stratum |
+Part III therefore ends with two decisions:
 
-The primary comparison is label efficiency at a matched presentation and update
-budget: `rollout_correction - static_random`. It is not a claim that both arms
-have identical collection cost. `rollout_correction` also spends model calls to
-generate games. Report model calls, generated tokens, teacher calls, wall-clock
-time, and total training cost for all three arms.
+1. Which supervised policy and action space does the evidence support?
+2. Did one-pass policy-state correction earn iterative imitation as a later
+   baseline?
 
-All arms draw from one manifested, development-only answer-branch pool.
-`static_random` samples its teacher states from that pool without conditioning
-on policy rollouts. For every selected policy-visited state, `static_matched`
-samples a distinct teacher state from the same answer branch and a
-pre-registered turn and candidate-count stratum, excluding every eligible
-rollout-correction state. When that stratum is unavailable, it uses a
-deterministic fallback declared before sampling. Exclude every reserved
-gameplay branch and record overlap with the base corpus and the opposing arms.
-
-For `rollout_correction`:
-
-1. Run the policy through a fixed development-answer set using the declared
-   decoder.
-2. Persist every reachable policy state before querying the teacher.
-3. Query the teacher once for each eligible unique state after split checks
-   pass, then retain that state's `visit_count`.
-4. Train the primary correction corpus with examples weighted by `visit_count`.
-5. Report unique-state count, visit-weight concentration, any pre-registered
-   per-state cap, expert disagreement by turn and candidate-count bucket, and
-   failure paths.
-
-Pre-register one training-unit protocol before sampling. A training unit is
-one formatted prompt-label presentation, transformed by a frozen truncation
-rule and padded to the frozen maximum input length. Cap each eligible rollout
-state's `visit_count` at a pre-registered integer, then expand the correction
-corpus into that many training units per unique state. Define `N` as the
-resulting unit count. `static_matched` assigns the same capped count to the
-static counterpart of each rollout state. `static_random` draws exactly `N`
-independent units with replacement, uniformly from the pre-manifested pool and
-without rollout conditioning. Thus all primary arms use exactly `N` prompt-label
-presentations and the same formatted-token exposure, batch schedule, optimizer
-updates, and input-token limit. Report unpadded input-token counts as a
-diagnostic.
-
-Within each seed triplet, all arms also use the same base checkpoint,
-representation, action vocabulary, and held-out evaluation. A secondary
-unique-state ablation samples uniformly from the correction corpus's unique
-states to the same `N` presentation units and keeps the same update and token
-budget. Reuse the current Wordle mechanics to collect the first traces. Part
-IV later wraps the frozen rollout contract in a canonical environment
-interface.
-
-### Pre-register the entry gate
-
-Before collection, record the primary metric, the paired held-out answer
-battery, and the uncertainty method. Train three seed-matched arm triplets.
-
-The primary estimand is the equal-weight mean of the three seed-paired
-held-out solve-rate differences, `rollout_correction - static_random`.
-`static_matched` is a pre-registered diagnostic comparison, not the entry
-gate. For the answer-level paired bootstrap, resample held-out answer IDs with
-replacement while retaining all three arm outcomes for each sampled answer.
-Within each replicate, compute each seed-pair difference and then their
-equal-weight mean; never resample arms independently. Lab 30 permits the
-iterative imitation work in Part IV only when all of the following hold:
-
-* mean paired held-out solve-rate difference is at least five percentage
-  points;
-* `rollout_correction` improves over `static_random` in all three seed pairs;
-* the pooled answer-level paired bootstrap 95% interval excludes zero.
-
-The seed pairs are the replication units. The bootstrap interval describes the
-fixed answer battery at those three seed pairs; it is not a population or
-seed-distribution claim.
-
-If the gate fails, preserve the traces and diagnose the null or harmful result.
-Part IV may formalize the environment and analyze those traces, but it does not
-run iterative imitation or use it as an RL baseline without a separately
-pre-registered replication.
-
-### Decide what the result means
-
-| Result | Interpretation |
-| --- | --- |
-| `rollout_correction` beats `static_random`, but matches `static_matched` | Targeting difficult regions of the state space explains most of the gain. |
-| `rollout_correction` beats `static_matched`, which beats `static_random` | Coarse difficulty and residual state-distribution differences beyond the matched branch, turn, and candidate-count strata both add useful corrective information. |
-| All three arms are similar | The on-policy-state hypothesis did not improve this policy under the tested budget. |
-| `rollout_correction` harms behavior | The correction distribution, relabeling rule, or optimization budget caused regression. Inspect it before iterating. |
-
-This lab is the cliffhanger for Part IV. It establishes whether the project has
-evidence that interaction-created data matters before it adds value learning or
-reinforcement learning.
-
-Part III should not assume that a larger vocabulary is better. It asks whether
-the restricted action space is a real bottleneck, whether removing that
-restriction improves the symbolic policy, and whether the small model can
-learn the improved policy without creating a new failure mode.
-
-Part IV takes the best frozen policy and the Lab 30 outcome, formalizes the
-environment and trace contract, then studies value learning and
-simulator-based policy updates. See
+Part IV formalizes the environment and trace contract, then compares iterative
+imitation with simulator-based policy learning. See
 [Part IV: Learning through interaction](part4-prd.md).

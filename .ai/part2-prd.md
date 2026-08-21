@@ -321,114 +321,130 @@ This gives us an opportunity to distinguish imitation quality from game quality.
 
 ---
 
-## Lab 20 — Full SFT on the Validated Dataset
+## Lab 19b — Diagnose full-list rank drift
 
-By this point, we should have much stronger evidence about what data and representation work.
+Lab 19 showed that a model can improve its twelve-action distillation objective
+while becoming worse over the deployed 2,315-answer action space. Before
+training another model, this lab uses the persisted score matrices and
+checkpoints to locate that failure.
 
-Only now do we return to the more expensive full supervised fine-tuning experiment.
+On paired Turn 2 states, compare each trained arm with its incumbent:
 
-We will train the entire model using the best dataset and representation discovered in Labs 13–19.
+* where the trained top action ranked under the incumbent;
+* whether newly dominant actions came from below the mined top 32;
+* how candidate, candidate-teacher, and open-teacher ranks moved;
+* whether good actions lost score, unsupported actions gained score, or both;
+* how the sole candidate's rank changed on visited singleton states;
+* whether newly dominant bad actions appeared in that seed's training support.
 
-Then we compare:
+The main question is:
 
-* LoRA
-* full SFT
-* distilled policy
+> Did frozen hard negatives become stale as the policy changed, or did
+> continued training cause a broader loss of the incumbent ranking?
 
-The question is no longer:
-
-> Is full SFT better than LoRA?
-
-Instead, it becomes:
-
-> Once the training data is good, how much additional capability do we gain by allowing the entire network to adapt?
-
-We will compare performance against:
-
-* training time
-* trainable parameter count
-* checkpoint size
-* solve rate
-* consistency
-* policy quality
-
-This provides a much more meaningful cost-versus-quality comparison than the original Part I experiment.
+This is a no-training diagnostic. Its result determines how Lab 20 constructs
+corrective data.
 
 ---
 
-## Lab 21 — Reinforcement Learning Revisited
+## Lab 20 — Correct policy-created states
 
-In Part I, GRPO attempted to improve a policy that was still fundamentally weak.
+Static expert trajectories do not cover every state the deployed policy creates.
+Lab 19 also showed that a frozen pre-training view of the policy's mistakes can
+become obsolete during continued training.
 
-Now we revisit RL with a competent supervised starting point.
+This lab asks:
 
-The reward can focus on genuine gameplay quality:
+> Does expert correction on states reached by the policy improve full-game
+> behavior more than the same amount of additional static expert data?
 
-* valid output
-* no repeated guesses
-* history consistency
-* candidate-set reduction
-* efficient solving
-* successful completion
+This is supervised learning, not RL. A symbolic teacher labels the states after
+collection. The changed variable is where those states came from.
 
-Because the base policy should already understand the game, reinforcement learning is no longer being asked to discover Wordle from scratch.
+### Freeze the rollout contract
 
-Instead, it can refine behavior.
+Record the policy checkpoint, observation schema, prompt version, answer
+vocabulary, decoder, action parser, transition rules, answer split, and trace
+format. Preserve every policy-created state before querying the teacher.
 
-We will compare the pre-RL and post-RL policies and answer:
+### Compare matched additional data
 
-* Does solve rate increase?
-* Are games solved in fewer turns?
-* Does the policy choose more informative guesses?
-* Does RL introduce regressions?
-* How far does the policy move from the supervised model?
-* Is the improvement worth the added complexity?
+Start all arms from the same frozen incumbent:
 
-This is a much more realistic use of post-training reinforcement learning.
+| Arm | New labeled states |
+| --- | --- |
+| `rollout_correction` | States reached during fixed model-driven games, relabeled by the symbolic teacher |
+| `static_random` | Expert-generated states sampled without reference to policy rollouts |
+| `static_matched` | Expert-generated states matched by answer branch, turn, and candidate-count stratum |
+
+Persist each eligible unique rollout state before querying the teacher, query
+it once, and retain its `visit_count`. Cap that count at a preregistered value,
+then expand the correction corpus into formatted training presentations.
+`static_matched` receives the same capped weight as its corresponding rollout
+state. `static_random` samples the same total presentation count with
+replacement from a manifested development-only pool.
+
+All arms use the same number of formatted training presentations, padded-token
+budget, optimizer updates, schedule, and held-out evaluation. Preserve unique
+state counts, visit weights, teacher disagreement, collection cost, and overlap
+with the base corpus.
+
+Train three seed-matched arm triplets. The primary estimate is the equal-weight
+mean of the three seed-paired held-out solve-rate differences:
+`rollout_correction - static_random`.
+
+The correction gate passes only when:
+
+* the mean paired solve-rate gain is at least five percentage points;
+* rollout correction improves all three seed pairs;
+* the pooled answer-level paired bootstrap 95% interval excludes zero.
+
+The bootstrap resamples held-out answer IDs while retaining all three arm
+outcomes and all three seed pairs for each sampled answer. It never resamples
+arms independently.
+
+`static_matched` explains whether a gain comes from coarse state difficulty or
+from policy-specific state differences beyond branch, turn, and candidate
+count.
+
+If the gate fails, preserve the traces and diagnose the result. Do not iterate
+the correction loop or treat it as an RL baseline without new evidence.
 
 ---
 
-## Lab 22 — Final Evaluation and Ablation Study
+## Lab 21 — Part II checkpoint and handoff
 
-The final lab answers the question that matters most:
+Part II ends by answering:
 
-> What actually made the model better?
+> Which supervised choices produced deployed capability, and which only
+> improved an offline objective?
 
-We will run the best model against a held-out Wordle evaluation set and produce a final scorecard.
+Run the frozen models against one held-out scorecard covering:
 
-Metrics may include:
+* answer-constrained solve rate and turns on wins;
+* free-generation validity;
+* history consistency and repeats;
+* Turn 2 action value and candidate reduction;
+* singleton closure;
+* runtime, trainable parameters, and checkpoint size.
 
-* solve rate
-* mean turns on wins
-* valid output rate
-* history consistency
-* repeat rate
-* candidate reduction
-* runtime
-* checkpoint size
+Then record the supported ablations. Compare static versus policy-created data,
+compact versus structured state, isolated versus trajectory examples, and the
+incumbent against the failed distillation arms. Do not describe a failed
+intervention as a component of the best model.
 
-But we will also perform ablations.
+The handoff freezes:
 
-For example:
+* the retained Part II checkpoint and seed;
+* the retained corpus and representation;
+* the answer-only action vocabulary;
+* the Lab 20 correction result and traces;
+* the unresolved rank-drift and interface failures.
 
-* remove policy balancing
-* remove structured state
-* remove trajectory data
-* remove distillation
-* remove RL
-* compare LoRA and full SFT
-
-Each ablation removes one improvement and measures the impact.
-
-This prevents us from ending the course with a pile of interventions and no idea which ones mattered.
-
-The final result should tell a causal story:
-
-> Better data produced the largest improvement. Structured state solved most consistency failures. Trajectory training improved later turns. Distillation transferred policy quality. Full SFT added a smaller incremental gain. RL improved turn efficiency but was not responsible for basic competence.
-
-The exact conclusions will depend on what the experiments show.
-
-That uncertainty is intentional.
+Part III begins from that record. Full SFT waits until Part III has tested the
+action vocabulary and selected the final supervised recipe. Completion-level
+RL does not return here; Part IV studies policy learning through complete
+environment trajectories.
 
 ---
 
@@ -448,6 +464,6 @@ The final model is useful evidence that our process worked.
 
 But the more important result is that we can explain, with data and controlled experiments, how a weak model became a competent one.
 
-Part III continues this work by testing whether the project defined Wordle's
-action space too narrowly. See [Part III: Expanding the Wordle action
-space](part3-prd.md).
+Part III continues this work in Lab 22 by testing whether the project defined
+Wordle's action space too narrowly. See
+[Part III: Expanding the Wordle action space](part3-prd.md).
