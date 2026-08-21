@@ -379,11 +379,112 @@ Record the expected interpretations before training:
 | Solve rate improves but mean turns worsens | Probes improve reliability at the cost of efficiency. Decide which objective the course values. |
 | Both teacher and model improve | Retain the full action space and test it in later trajectory, distillation, full-SFT, or RL work. |
 
+## Lab 30: The experiment that motivates Part IV
+
+Part III ends with one controlled test of the boundary between static
+supervised policy learning and interactive data collection.
+
+**Question.** Does expert correction on states reached by the policy improve
+full-game behavior more than the same amount of additional static expert data?
+
+This lab is not RL. It does not use a critic, trajectory reward, GRPO, or a
+policy-gradient update. The policy still learns from symbolic expert labels.
+The one changed variable is where the new labeled states came from.
+
+### Freeze the entry policy and interface
+
+Select the best frozen Part III policy through the existing evidence. Record:
+
+* checkpoint, seed, corpus manifest, and prompt representation;
+* action vocabulary and decoder;
+* development and held-out answer boundaries;
+* current full-game and action-level results.
+
+The experiment keeps those choices fixed. If Part III finds that the expanded
+action space does not transfer to the model, this lab uses the retained
+answer-only action space instead.
+
+### Compare matched additional data
+
+Start both arms from the same frozen policy.
+
+| Arm | New labeled states |
+| --- | --- |
+| `rollout_correction` | States reached during a fixed set of model-driven Wordle games, relabeled by the declared symbolic teacher |
+| `static_control` | Independently sampled expert-generated states, matched to the correction arm's label count, update budget, and input-token exposure |
+
+The primary comparison is label efficiency at a matched added-label and update
+budget. It is not a claim that both arms have identical collection cost:
+`rollout_correction` also spends model calls to generate games. Report model
+calls, generated tokens, teacher calls, wall-clock time, and total training
+cost for both arms.
+
+Both arms draw from one manifested, development-only answer-branch pool.
+For every selected policy-visited state, sample one static expert state from
+the same answer branch and a pre-registered turn and candidate-count stratum.
+When that exact stratum is unavailable, use a deterministic fallback stratum
+declared before sampling. The static state must differ from the policy-visited
+state. Exclude every reserved gameplay branch and record overlap with the base
+corpus and the opposing arm. This keeps answer difficulty and branch assignment
+from becoming an arm-level treatment.
+
+For `rollout_correction`:
+
+1. Run the policy through a fixed development-answer set using the declared
+   decoder.
+2. Persist every reachable policy state before querying the teacher.
+3. Query the teacher on eligible visited states only after split checks pass.
+4. Report expert disagreement by turn, candidate-count bucket, and failure
+   path.
+5. Train one fixed supervised update budget on those corrections.
+
+Both arms use the same optimizer, schedule, base checkpoint, representation,
+action vocabulary, training seed, and held-out evaluation. Reuse the current
+Wordle mechanics to collect the first traces. Part IV later turns that narrow
+collector into a canonical environment interface.
+
+### Pre-register the entry gate
+
+Before collection, record the primary metric, the paired held-out answer
+battery, and the uncertainty method. Train three seed-matched arm pairs.
+
+The estimand is the mean paired held-out solve-rate difference,
+`rollout_correction - static_control`, across the three seed pairs. Lab 30
+permits the iterative imitation work in Part IV only when all of the following
+hold:
+
+* mean paired held-out solve-rate difference is at least five percentage
+  points;
+* `rollout_correction` improves over `static_control` in all three seed pairs;
+* the pooled answer-level paired bootstrap 95% interval excludes zero.
+
+The seed pairs are the replication units. The pooled interval describes the
+fixed answer battery; it is not a population claim.
+
+If the gate fails, preserve the traces and diagnose the null or harmful result.
+Part IV may formalize the environment and analyze those traces, but it does not
+run iterative imitation or use it as an RL baseline without a separately
+pre-registered replication.
+
+### Decide what the result means
+
+| Result | Interpretation |
+| --- | --- |
+| `rollout_correction` beats `static_control` on held-out full games | Policy-created states carry useful corrective information. Part IV can ask how to learn from interaction with less expert supervision. |
+| Both arms improve equally | More supervised data or updates explain the gain. The source of the state did not matter in this test. |
+| Neither arm improves | The current policy, representation, decoder, or teacher target remains the bottleneck. Do not attribute the result to a missing RL algorithm. |
+| `rollout_correction` harms behavior | The correction distribution, relabeling rule, or optimization budget caused regression. Inspect it before iterating. |
+
+This lab is the cliffhanger for Part IV. It establishes whether the project has
+evidence that interaction-created data matters before it adds value learning or
+reinforcement learning.
+
 Part III should not assume that a larger vocabulary is better. It asks whether
 the restricted action space is a real bottleneck, whether removing that
 restriction improves the symbolic policy, and whether the small model can
 learn the improved policy without creating a new failure mode.
 
-Part IV takes the best frozen policy supported by this evidence and studies
-model-driven trajectories, value learning, and simulator-based policy updates.
-See [Part IV: Learning through interaction](part4-prd.md).
+Part IV takes the best frozen policy and the Lab 30 outcome, formalizes the
+environment and trace contract, then studies value learning and
+simulator-based policy updates. See
+[Part IV: Learning through interaction](part4-prd.md).

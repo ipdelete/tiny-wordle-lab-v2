@@ -68,9 +68,10 @@ The repository already contains most of the underlying mechanics:
   useful state-conditioned behavior while leaving strategic and late-game
   failures.
 
-These pieces are not yet a training environment. Part IV begins by giving them
-one explicit contract for reset, action validation, transition, reward,
-termination, and trace persistence.
+Lab 30 used these pieces for a narrow, supervised correction experiment. They
+are not yet a canonical training environment. Part IV gives them one explicit
+contract for reset, action validation, transition, reward, termination, and
+trace persistence.
 
 The relevant change is not "add an RL acronym." It is to let the policy create
 the states from which it later learns.
@@ -103,11 +104,12 @@ Part IV will make that boundary explicit when it introduces temporal credit
 assignment.
 
 SAO is not the starting implementation target. Its distributed and
-asynchronous systems work is unnecessary for a 0.6B model on one Mac. Part IV
-first establishes whether model-driven rollouts, expert relabeling, value
-learning, actor-critic updates, or simulator-based GRPO help at all. A bounded
-SAO-style study comes later and must earn its complexity by beating simpler
-baselines under a matched compute budget.
+asynchronous systems work is unnecessary for a 0.6B model on one Mac. Part III
+first tests whether model-created states are more useful than label- and
+update-matched static expert data. Part IV then asks whether value learning,
+actor-critic updates, or simulator-based GRPO can improve on expert correction.
+A bounded SAO-style study comes later and must earn its complexity by beating
+simpler baselines under a matched compute budget.
 
 ## Entry criteria
 
@@ -125,16 +127,18 @@ The entry record must state:
   training policy;
 * held-out answers and all exclusion boundaries;
 * full-game, action-level, and failure-mode measurements.
+* the Part III Lab 30 arm definitions, traces, and result.
 
 Part III may find that its full-action teacher is valuable, neutral, or too
 hard for the model to learn. Part IV must use the action space that the Part III
 evidence supports. It must not assume that all 12,972 original legal guesses
 are the deployed action space.
 
-The entry policy must show enough state-conditioned behavior for rollouts to be
-diagnostic. If the model cannot produce a valid action under the declared
-decoder, further RL would only train around an interface failure. If the model
-is valid but strategically weak, that weakness is the subject of Part IV.
+The Part III capstone decides the first Part IV question. Only a result that
+passes its pre-registered Lab 30 gate permits Lab 33's iterative imitation
+loop. A null or harmful result does not prove that RL cannot help, but it makes
+policy-gradient work lower priority until the current supervised or interface
+bottleneck is explained.
 
 ## The environment contract
 
@@ -209,7 +213,7 @@ explicit, pre-registered behavior. It may terminate the episode or consume a
 turn, but different behavior creates a different environment and must not be
 changed inside a comparison.
 
-Lab 30 must publish one transition table for valid actions, repeated actions,
+Lab 31 must publish one transition table for valid actions, repeated actions,
 out-of-vocabulary words, and malformed output. The existing benchmark accepts
 every alphabetic five-letter string, scores repeated guesses, and appends them
 to history. A Part IV environment that rejects or terminates on any of those
@@ -229,7 +233,7 @@ signal. They must compare against the sparse-reward environment with the same
 initial policy, decoder, action vocabulary, answer split, and model-call
 budget.
 
-## Lab 30: Define the Wordle environment
+## Lab 31: Define the Wordle environment
 
 **Goal.** Turn the existing Wordle mechanics into one explicit environment
 interface without changing the game rules.
@@ -251,25 +255,6 @@ interface without changing the game rules.
 **Lesson.** The environment owns transitions. The policy receives observations,
 not privileged game state.
 
-## Lab 31: Generate policy rollouts
-
-**Goal.** Collect full episodes from the frozen entry policy before training
-another model.
-
-**Work.**
-
-* Run a fixed answer sample with the primary deployed decoder.
-* Persist every action, feedback string, terminal reason, and model score
-  needed to reproduce the decision.
-* Measure solve rate, turns, invalid actions, repeats, legal-action rate,
-  candidate reduction, open-action regret where available, and singleton
-  closure.
-* Label whether a state has an exact match in the supervised corpus and report
-  representation-level, not only text-level, overlap.
-
-**Lesson.** A model's deployed state distribution is evidence. It is not safely
-approximated by the teacher trajectories used for training.
-
 ## Sampling-policy gate
 
 The answer-constrained decoder from Labs 18b through 18d is a deterministic
@@ -278,7 +263,7 @@ but it is not a policy-gradient data source. A greedy argmax provides neither
 rollout variation for GRPO nor a normalized behavior-policy probability for an
 actor loss or importance ratio.
 
-Before Labs 38 through 41, Part IV must define one stochastic training policy
+Before Labs 37 through 40, Part IV must define one stochastic training policy
 over the declared action vocabulary. Its design may use constrained token
 sampling or a normalized distribution over complete legal-word scores, but it
 must state:
@@ -300,14 +285,14 @@ distribution on a fixed state suite.
 Without this gate, a constrained rollout is useful for diagnosis but not for
 policy-gradient training.
 
-## Lab 32: Measure distribution shift
+## Lab 32: Analyze policy-created states
 
-**Goal.** Separate states visited by the learned policy from states visited by
-the expert.
+**Goal.** Expand the Part III capstone's trace diagnosis into a reproducible
+analysis of the states the policy creates.
 
 **Work.**
 
-Compare expert and policy rollouts by:
+Compare the capstone's expert and policy rollouts by:
 
 * turn and remaining-turn distributions;
 * candidate-count buckets;
@@ -323,54 +308,27 @@ compare later turns across policies as though they encountered the same states.
 **Lesson.** Compounding error is a distribution problem. A small early error can
 move the policy into a history that expert-only data never prepared it to read.
 
-## Lab 33: Relabel model-visited states
+## Lab 33: Extend on-policy imitation
 
-**Goal.** Ask the symbolic teacher what it would do in states reached by the
-model.
+**Goal.** Turn the Part III one-pass correction experiment into a bounded,
+iterative DAgger-style loop only when its result passes the Lab 30 entry gate.
 
-**Work.**
+Each iteration freezes the collector policy, collects new rollouts, persists
+eligible visited states, queries the declared teacher, trains one fixed
+supervised budget, and evaluates on the frozen answer set. At every iteration,
+the static control receives the same number of newly labeled expert states,
+matched by the Lab 30 answer-branch and state-stratum rule, and the same
+cumulative update budget.
 
-* Select model-visited states without crossing held-out answer boundaries.
-* Query the declared teacher only after the state is persisted.
-* Record teacher action, action value diagnostics, and disagreement with the
-  model action.
-* Compare random additional expert states with an equally sized set of
-  model-visited corrective states.
+The candidate-only teacher, any Part III full-action teacher, and the deployed
+decoder may have different action spaces. Every correction record must identify
+which teacher produced its label and which decoder produced the visited state.
 
-This lab must distinguish teacher action selection from evaluation. The
-candidate-only teacher, any Part III full-action teacher, and the deployed
-decoder may all have different action spaces. Every record must identify which
-one produced the label.
+**Lesson.** On-policy data can be useful without allowing the policy to grade
+itself. Iteration earns its cost only after the one-pass capstone shows a clear
+reason to continue.
 
-**Lesson.** On-policy data can be more useful than more of the original
-expert-generated distribution.
-
-## Lab 34: Iterative imitation learning
-
-**Goal.** Test a bounded DAgger-style loop before policy-gradient RL.
-
-**Process.**
-
-```text
-freeze policy
--> collect rollouts
--> relabel selected visited states
--> add only those corrections to the training set
--> train one declared update budget
--> evaluate on frozen answers
-```
-
-Run a small, fixed number of iterations. Keep the original expert corpus,
-policy-view schema, decoder, and answer splits stable. The control adds the
-same number of independently sampled expert states.
-
-**Primary question.** Do corrective labels from states the policy actually
-reaches improve full-game behavior more than equal-cost additional expert data?
-
-**Lesson.** Data collection can depend on the current policy without allowing
-the policy to grade itself.
-
-## Lab 35: Define state value targets
+## Lab 34: Define state value targets
 
 **Goal.** Define "better state" before training a critic.
 
@@ -397,18 +355,18 @@ with every row.
 **Lesson.** Reward records what happened in an episode. Value estimates what
 will happen from a state under a declared policy.
 
-## Lab 36: Train and validate a critic
+## Lab 35: Train and validate a critic
 
 **Goal.** Determine whether a learned value estimate is useful enough to
 support policy updates.
 
 **Work.**
 
-* Train a critic against the Lab 35 target using only the approved policy
+* Train a critic against the Lab 34 target using only the approved policy
   observation.
 * Evaluate error, rank correlation, calibration, and the ability to order
   independently held-out states.
-* Compare against the simple value baselines from Lab 35.
+* Compare against the simple value baselines from Lab 34.
 * Evaluate both broad states and sharp late-game states. An aggregate error
   number can hide a critic that is accurate only where the policy already wins.
 
@@ -419,7 +377,7 @@ Part IV records that result and does not treat it as an advantage oracle.
 **Lesson.** A critic is another learned model with its own failure modes. It is
 not a reward function written in a different file.
 
-## Lab 37: Assign credit across turns
+## Lab 36: Assign credit across turns
 
 **Goal.** Make temporal credit assignment visible before optimizing the policy.
 
@@ -441,20 +399,21 @@ plain, declared alternative before claiming that it reduces noise in Wordle.
 **Lesson.** A win or loss does not explain by itself which earlier action should
 change.
 
-## Lab 38: Actor-critic Wordle
+## Lab 37: Actor-critic Wordle
 
 **Goal.** Test whether critic-derived advantages improve a competent policy over
 full model-generated episodes.
 
 The actor receives the policy observation and samples an action from the
 stochastic training policy defined by the sampling-policy gate. The critic
-estimates the Lab 35 target. The update uses only complete persisted
+estimates the Lab 34 target. The update uses only complete persisted
 trajectories with normalized behavior-policy probabilities.
 
 Compare against:
 
 * the frozen supervised entry policy;
-* the best DAgger iteration;
+* the best DAgger iteration when Lab 33 ran, otherwise the one-pass Lab 30
+  `rollout_correction` arm;
 * a terminal-reward policy-gradient control, if it fits the same compute
   budget.
 
@@ -465,7 +424,7 @@ full-game metric with actor loss.
 **Lesson.** Actor-critic learning is justified only if the critic makes
 trajectory feedback more useful than sparse outcome alone.
 
-## Lab 39: Revisit GRPO with the simulator
+## Lab 38: Revisit GRPO with the simulator
 
 **Goal.** Compare Lab 12's completion-level formulation with full
 environment-based groups.
@@ -493,7 +452,7 @@ waiting for the last rollout.
 **Lesson.** GRPO can use a simulator. The question is whether its grouped
 rollouts are worth their extra samples and synchronization cost for Wordle.
 
-## Lab 40: Local single-rollout actor-critic
+## Lab 39: Local single-rollout actor-critic
 
 **Goal.** Study a local single-trajectory formulation that motivates SAO
 without presenting it as an asynchronous SAO reproduction.
@@ -511,7 +470,7 @@ The first implementation remains local and bounded:
 
 This local loop normally has little or no policy lag. It is a single-rollout
 actor-critic baseline, not evidence about SAO's asynchronous off-policy claim.
-It may study skip-observation advantages when Lab 37 supports that comparison.
+It may study skip-observation advantages when Lab 36 supports that comparison.
 
 An asynchronous SAO-style arm is optional and has a separate gate. It must
 induce and measure nonzero policy lag, retain normalized behavior-policy
@@ -523,7 +482,7 @@ this dense 0.6B model unless separately justified.
 **Lesson.** Single-rollout updates trade grouping cost for a more demanding
 value-estimation problem.
 
-## Lab 41: Compare policy-learning methods
+## Lab 40: Compare policy-learning methods
 
 **Goal.** Compare data source and optimization structure under one evaluation
 contract.
@@ -531,11 +490,14 @@ contract.
 | Method | Training data | Full environment rollout | Critic | Grouped samples |
 | --- | --- | ---: | ---: | ---: |
 | Supervised baseline | expert states | No | No | No |
-| DAgger-style imitation | policy states plus expert labels | Yes, for collection | No | No |
+| On-policy expert correction | policy states plus expert labels | Yes, for collection | No | No |
 | Trajectory GRPO | policy trajectories | Yes | No | Yes |
 | Actor-critic | policy trajectories | Yes | Yes | No |
 | Local single-rollout actor-critic | policy trajectories | Yes | Yes | No |
 | Optional asynchronous SAO-style arm | policy trajectories | Yes | Yes | No |
+
+When Lab 33 does not run, the on-policy imitation row is the one-pass Lab 30
+arm. When it does run, report both the Lab 30 arm and the best iterative result.
 
 Every arm must use:
 
@@ -557,7 +519,7 @@ curve.
 **Lesson.** The right method depends on the feedback structure, value quality,
 and compute budget. No method wins by acronym.
 
-## Lab 42: Build the evidence-backed learning loop
+## Lab 41: Build the evidence-backed learning loop
 
 **Goal.** Assemble only the mechanisms that passed their earlier controls.
 
@@ -641,7 +603,8 @@ The teaching sequence remains deliberate:
 ```text
 Part I: Learn the techniques.
 Part II: Fix the supervised policy with evidence.
-Part III: Test whether the action space and problem scale matter.
+Part III: Test the action space, problem scale, and one controlled
+          policy-state correction.
 Part IV: Learn from the consequences of actions in an environment.
 ```
 
