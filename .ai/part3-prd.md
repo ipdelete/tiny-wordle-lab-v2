@@ -383,3 +383,7 @@ Part III should not assume that a larger vocabulary is better. It asks whether
 the restricted action space is a real bottleneck, whether removing that
 restriction improves the symbolic policy, and whether the small model can
 learn the improved policy without creating a new failure mode.
+
+Part IV takes the best frozen policy supported by this evidence and studies
+model-driven trajectories, value learning, and simulator-based policy updates.
+See [Part IV: Learning through interaction](part4-prd.md).
