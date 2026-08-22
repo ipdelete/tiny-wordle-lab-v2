@@ -361,11 +361,25 @@ This lab asks:
 This is supervised learning, not RL. A symbolic teacher labels the states after
 collection. The changed variable is where those states came from.
 
+The incumbent is the Lab 18d checkpoint for each seed — the same
+`qwen3-0.6b-wordle-lora-dataset-b-structured[-seed45/47]` adapter that solved
+10 of 19 reserved answer-constrained games under Lab 18d's exact decoder and
+opening. All three arms of a seed continue from that seed's own Lab 18d
+incumbent, verified by adapter file hash, not from a freshly retrained
+checkpoint.
+
 ### Freeze the rollout contract
 
 Record the policy checkpoint, observation schema, prompt version, answer
 vocabulary, decoder, action parser, transition rules, answer split, and trace
 format. Preserve every policy-created state before querying the teacher.
+
+Before any correction state is collected, reserve a small frozen full-list
+anchor suite from the existing Lab 18b battery — a fixed set of states spread
+across candidate-count regimes, held out of every arm's training pool. The
+same suite is scored with the same 2,315-word scorer at every drift
+checkpoint of every arm, so drift is always measured against states no arm
+ever trains on.
 
 ### Compare matched additional data
 
@@ -389,12 +403,38 @@ budget, optimizer updates, schedule, and held-out evaluation. Preserve unique
 state counts, visit weights, teacher disagreement, collection cost, and overlap
 with the base corpus.
 
+### Shared incumbent preservation
+
+Every optimizer update is a batch of exactly two presentations: one
+arm-specific correction presentation, and one identical replay presentation
+drawn from the original structured training corpus. The replay sequence and
+its order are sampled once per seed and reused unchanged by every arm in that
+seed's triplet, so replay protection against forgetting is identical across
+arms and the only thing that differs between arms is the correction slot.
+
+### Training checkpoints and the shared seed-triplet drift stop
+
+Training pauses at a small set of preregistered fractions of each seed's
+total presentation count (including the start and the end). All three arms of
+a seed always reach the same checkpoint before any of them continues, so
+update counts cannot drift apart mid-triplet. At each checkpoint, every arm's
+adapter scores the frozen full-list anchor suite, and a fixed set of
+conservative drift rules — covering candidate-mass collapse, best-candidate
+and singleton rank collapse, and winner concentration (how many distinct
+words win across the anchor suite, and how large the single most common
+winner's share is) — compares that arm against the seed's own untouched
+incumbent baseline. If any arm trips any rule, the entire seed triplet stops
+at that checkpoint: this keeps update counts matched across arms and is a
+safety guard against Lab 19-scale collapse, not a model-selection step. A
+stopped triplet cannot pass the correction gate below.
+
 Train three seed-matched arm triplets. The primary estimate is the equal-weight
 mean of the three seed-paired held-out solve-rate differences:
 `rollout_correction - static_random`.
 
 The correction gate passes only when:
 
+* no seed triplet stopped on a drift rule;
 * the mean paired solve-rate gain is at least five percentage points;
 * rollout correction improves all three seed pairs;
 * the pooled answer-level paired bootstrap 95% interval excludes zero.
@@ -406,6 +446,12 @@ arms independently.
 `static_matched` explains whether a gain comes from coarse state difficulty or
 from policy-specific state differences beyond branch, turn, and candidate
 count.
+
+This lab does not iterate. It collects one rollout corpus, trains once per
+arm to a stop point, and evaluates once. A dynamic negative-refresh design —
+repeatedly re-mining policy-created states as training proceeds, DAgger-style
+— is a different, harder-to-control experiment and is explicitly deferred to
+a future lab rather than folded into this one.
 
 If the gate fails, preserve the traces and diagnose the result. Do not iterate
 the correction loop or treat it as an RL baseline without new evidence.
