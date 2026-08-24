@@ -512,6 +512,76 @@ policy gate, executed simulator-GRPO notebook, trace artifacts, held-out
 evaluation, and an analysis that states whether a replicated Lab 34 is worth
 running.
 
+## SQ34b: optimization study
+
+SQ34 rejected the `5e-5 / 0.02` recipe. It did not reject simulator GRPO.
+SQ34b asks whether the same sparse reward can move this LoRA through SQ34's
+failure horizon without an adverse candidate-mass path.
+
+This is a follow-up study, not a second attempt at the SQ34 pass criterion
+and not a Lab 34 rehearsal. The original SQ34 decision rules stay frozen.
+
+### Arms
+
+Three contemporaneous arms, each from the untouched seed 45 adapters:
+
+| arm | learning rate | KL coefficient |
+| --- | ---: | ---: |
+| `baseline-recipe` | `5e-5` | `0.02` |
+| `lower-step` | `1e-5` | `0.02` |
+| `stronger-kl` | `5e-5` | `0.10` |
+
+Warmup is 8 optimizer steps on every arm, matching SQ34. Do not reuse SQ34
+traces as training data. Sample on-policy. Use the first 96 answers of SQ34's
+`POOL_SEED=3401` pool. Reload the seed 45 `policy` adapter between arms and
+assert the live LoRA digest equals SQ34's `initial_lora_digest`.
+
+SQ34's executed path is a plotted prior run. It is not the control.
+
+### Horizon
+
+At most 6 rounds of 16 groups of 4 per arm. That is the horizon where SQ34
+tripped the candidate-mass floor. Compare trajectories by optimizer update,
+LoRA delta, and KL, not only by round index.
+
+Held-out gameplay runs only at each arm's final or drift-stopped checkpoint.
+Anchors still run every round. Mid-run decoder scores do not select anything.
+
+### Memory
+
+SQ34 already plateaued the four kernel soaks. SQ34b does not rerun them.
+It does run one 40-iteration full training-step soak after an exercised arm
+reset, because reload is a new GPU lifecycle. The notebook still runs under
+`scripts/memguard.py --min-free 64`.
+
+### Advance, inconclusive, and stop
+
+Hard stops are the SQ34 Lab 20 and diversity rules, unchanged.
+
+An arm is **inconclusive** when `optimizer_steps < 15`, or when relative LoRA
+delta is below `0.005` and final-round mean KL is below `0.02`. Inconclusive
+is not an advance and not a reason to abandon the loop.
+
+An arm **advances** only when it clears the exposure bar and all of the
+following hold at its last checkpoint:
+
+* the candidate-mass hard floor never tripped, and final median mass is at
+  least `0.85` times the shared incumbent baseline;
+* stochastic trie solves are not more than 8 below the 56/152 baseline;
+* traces and ratio identity held.
+
+The `0.85` mass bar is an operational damage budget. Wilson intervals are
+descriptive. Deterministic 10/19 and greedy 7/19 are recorded and do not
+select a winner.
+
+Change the objective only if all three arms produce real movement through
+six rounds and all three have an adverse mass path. A single inconclusive
+arm does not license that.
+
+**Complete when:** the repository contains `build_sq34b.py`, the executed
+notebook, traces, a per-arm advance table, and an analysis that names the
+decision-tree outcome.
+
 ## Deliverables
 
 ```text
@@ -530,14 +600,19 @@ notebooks/sq34_simulator_grpo.ipynb
 .ai/docs/sq31_wordle_environment-analysis.md
 .ai/docs/sq34_simulator_grpo-cell-outputs.md
 .ai/docs/sq34_simulator_grpo-analysis.md
+build_sq34b.py
+notebooks/sq34b_optimization_study.ipynb
+.ai/docs/sq34b_optimization_study-cell-outputs.md
+.ai/docs/sq34b_optimization_study-analysis.md
 results/sq31/
 results/sq34/
+results/sq34b/
 ```
 
 Notebook builders remain the source of generated notebook structure. SQ31
 follows the existing `build_18d.py`, `build_19.py`, and `build_20.py` pattern.
 SQ34 gets its own `build_sq34.py` and must not put optimizer code in the SQ31
-builder.
+builder. SQ34b is a fork of that builder, not a change to the SQ34 notebook.
 
 ## Relationship to the main curriculum
 
