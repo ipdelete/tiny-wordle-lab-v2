@@ -437,6 +437,15 @@ code(
                 MEMORY_CAP_GIB / total_gib
             )
             print(f"MPS cap: {MEMORY_CAP_GIB:.0f} GiB of {total_gib:.0f} GiB")
+
+        def driver_memory_gib():
+            if device.type == "mps":
+                return torch.mps.driver_allocated_memory() / 1024**3
+            if device.type == "cuda":
+                return torch.cuda.memory_allocated() / 1024**3
+            return float("nan")
+
+
         tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
         tokenizer_digest = digest_tokenizer(tokenizer)
 
@@ -477,6 +486,7 @@ code(
             prompt_renderer=render_prompt,
             checkpoint_digest=checkpoint_sha256,
             tokenizer_digest=tokenizer_digest,
+            memory_probe=driver_memory_gib,
         )
         policy.verify_prompt_contract(rendered_probe)
         print("device:", device)
@@ -502,27 +512,22 @@ code(
     if RUN_MODEL:
         from collections import Counter
 
-        def driver_memory_gib():
-            if device.type == "mps":
-                return torch.mps.driver_allocated_memory() / 1024**3
-            if device.type == "cuda":
-                return torch.cuda.memory_allocated() / 1024**3
-            return float("nan")
-
-
         probe_environment = make_environment()
         probe_start = probe_environment.reset("SHORE")
         probe_observation = probe_start.observation
-        exact_memory_before = driver_memory_gib()
+        exact_trace_start = len(policy.forward_memory_trace)
         exact = policy.exact_distribution(
             probe_observation,
             temperature=1.0,
             max_model_calls=3,
             max_batch_size=256,
         )
-        exact_memory_after = driver_memory_gib()
-        if math.isfinite(exact_memory_after):
-            assert exact_memory_after < MEMORY_ABORT_GIB
+        exact_forward_peaks = policy.forward_memory_trace[exact_trace_start:]
+        finite_exact_peaks = [
+            value for value in exact_forward_peaks if math.isfinite(value)
+        ]
+        if finite_exact_peaks:
+            assert max(finite_exact_peaks) < MEMORY_ABORT_GIB
         assert abs(sum(exact.values()) - 1.0) < 1e-6
         decision = policy.sample(
             probe_observation,
@@ -552,12 +557,66 @@ code(
         assert decision.token_ids == policy.trie.sequence_for_word(decision.word)
         print("exact distribution:", len(exact), "actions")
         print(
-            "exact-walk driver GiB:",
-            exact_memory_before,
-            "->",
-            exact_memory_after,
+            "exact-walk live driver peaks GiB:",
+            exact_forward_peaks,
         )
         print("sampled action:", decision.word, decision.action_log_probability)
+    """
+)
+
+code(
+    """
+    if RUN_MODEL:
+        def assert_memory_plateau(peaks, label):
+            if not peaks:
+                return
+            third = len(peaks) // 3
+            middle = peaks[third:2 * third]
+            final = peaks[-third:]
+            creep = sum(final) / len(final) - sum(middle) / len(middle)
+            assert creep < 0.5, f"{label} still climbing {creep:+.2f} GiB"
+            assert max(final) - min(final) < 0.5, (
+                f"{label} working set has not plateaued"
+            )
+            assert max(peaks) < MEMORY_ABORT_GIB, (
+                f"{label} peak {max(peaks):.1f} GiB exceeds abort threshold"
+            )
+
+
+        sampling_driver_peaks = []
+        for iteration in range(40):
+            trace_start = len(policy.forward_memory_trace)
+            policy.sample(
+                probe_observation,
+                temperature=1.0,
+                seed=1000 + iteration,
+            )
+            iteration_peaks = policy.forward_memory_trace[trace_start:]
+            finite = [value for value in iteration_peaks if math.isfinite(value)]
+            if finite:
+                sampling_driver_peaks.append(max(finite))
+            if device.type == "mps":
+                torch.mps.empty_cache()
+        assert_memory_plateau(sampling_driver_peaks, "sampling")
+        print("sampling memory soak:", sampling_driver_peaks)
+
+        exact_driver_peaks = []
+        for iteration in range(40):
+            trace_start = len(policy.forward_memory_trace)
+            policy.exact_distribution(
+                probe_observation,
+                temperature=1.0,
+                max_model_calls=3,
+                max_batch_size=256,
+            )
+            iteration_peaks = policy.forward_memory_trace[trace_start:]
+            finite = [value for value in iteration_peaks if math.isfinite(value)]
+            if finite:
+                exact_driver_peaks.append(max(finite))
+            if device.type == "mps":
+                torch.mps.empty_cache()
+        assert_memory_plateau(exact_driver_peaks, "exact walk")
+        print("exact-walk memory soak:", exact_driver_peaks)
     """
 )
 
@@ -600,47 +659,6 @@ code(
             "observed:",
             observed_bins,
         )
-    """
-)
-
-code(
-    """
-    if RUN_MODEL:
-        driver_trace = []
-        for iteration in range(40):
-            policy.sample(
-                probe_observation,
-                temperature=1.0,
-                seed=1000 + iteration,
-            )
-            if device.type == "mps":
-                driver_trace.append(torch.mps.driver_allocated_memory() / 1024**3)
-                torch.mps.empty_cache()
-            elif device.type == "cuda":
-                driver_trace.append(torch.cuda.memory_allocated() / 1024**3)
-        if len(driver_trace) >= 10:
-            late = driver_trace[-10:]
-            assert max(late) - min(late) < 2.0
-        print("sampling memory soak:", driver_trace[-10:])
-
-        exact_driver_trace = []
-        for iteration in range(40):
-            policy.exact_distribution(
-                probe_observation,
-                temperature=1.0,
-                max_model_calls=3,
-                max_batch_size=256,
-            )
-            allocated = driver_memory_gib()
-            if math.isfinite(allocated):
-                assert allocated < MEMORY_ABORT_GIB
-                exact_driver_trace.append(allocated)
-            if device.type == "mps":
-                torch.mps.empty_cache()
-        if len(exact_driver_trace) >= 10:
-            late = exact_driver_trace[-10:]
-            assert max(late) - min(late) < 2.0
-        print("exact-walk memory soak:", exact_driver_trace[-10:])
     """
 )
 

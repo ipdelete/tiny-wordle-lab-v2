@@ -65,7 +65,7 @@ def policy():
         {"APPLE": (1, 99), "SHORE": (2, 99)},
         eos_token_id=99,
     )
-    return TriePolicy(
+    sampler = TriePolicy(
         FakeModel(),
         FakeTokenizer(),
         trie,
@@ -73,7 +73,9 @@ def policy():
         prompt_renderer=lambda prompt: prompt,
         checkpoint_digest="checkpoint",
         tokenizer_digest="tokenizer",
+        memory_probe=lambda: 1.25,
     )
+    return sampler
 
 
 def test_trie_shape_and_allowed_tokens():
@@ -105,6 +107,8 @@ def test_sampled_probability_replays():
     assert total == decision.action_log_probability
     assert per_token == decision.per_token_log_probabilities
     assert decision.token_ids in ((1, 99), (2, 99))
+    assert sampler.forward_memory_trace
+    assert set(sampler.forward_memory_trace) == {1.25}
 
 
 def test_same_seed_reproduces_action():

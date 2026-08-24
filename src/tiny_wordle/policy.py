@@ -253,6 +253,7 @@ class TriePolicy:
         checkpoint_digest: str = "",
         mask_version: str = MASK_VERSION,
         tokenizer_digest: str = "",
+        memory_probe: Callable[[], float] | None = None,
     ) -> None:
         self.model = model
         self.tokenizer = tokenizer
@@ -263,6 +264,8 @@ class TriePolicy:
         self.mask_version = mask_version
         self.tokenizer_digest = tokenizer_digest
         self.action_vocabulary_digest = digest_action_vocabulary(trie.words)
+        self.memory_probe = memory_probe
+        self.forward_memory_trace: list[float] = []
 
     @classmethod
     def from_tokenizer(
@@ -585,6 +588,8 @@ class TriePolicy:
             logits = outputs.logits if hasattr(outputs, "logits") else outputs[0]
             if logits.shape[1] != 1:
                 raise RuntimeError("model ignored logits_to_keep=1")
+            if self.memory_probe is not None:
+                self.forward_memory_trace.append(float(self.memory_probe()))
             return logits[:, -1, :]
 
     def _sample_token(
