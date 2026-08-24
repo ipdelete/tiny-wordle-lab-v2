@@ -246,6 +246,12 @@ budget.
 **Goal.** Turn the existing Wordle mechanics into one explicit environment
 interface without changing the game rules.
 
+An early bounded implementation using the Lab 18d seed 45 checkpoint is
+specified in [Side quest: simulator GRPO from Lab 18d](sidequest-simulator-grpo-prd.md).
+That run may supply reusable environment code and feasibility evidence. It does
+not satisfy this part's entry criteria or replace the canonical Lab 34
+replication from the policy selected by Lab 30.
+
 **Work.**
 
 * Implement the applicable Lab 20 or Lab 30 environment-facing rollout contract
