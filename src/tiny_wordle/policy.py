@@ -266,6 +266,7 @@ class TriePolicy:
         self.action_vocabulary_digest = digest_action_vocabulary(trie.words)
         self.memory_probe = memory_probe
         self.forward_memory_trace: list[float] = []
+        self.forward_call_count = 0
 
     @classmethod
     def from_tokenizer(
@@ -400,6 +401,107 @@ class TriePolicy:
                 )
             values.append(value)
             prefix += (token,)
+        return torch.stack(values).sum(), tuple(values)
+
+    def score_action(
+        self,
+        observation: Any,
+        word: str,
+        *,
+        temperature: float,
+        requires_grad: bool = True,
+    ) -> tuple[torch.Tensor, tuple[torch.Tensor, ...]]:
+        """Score a known action with a single teacher-forced forward.
+
+        :meth:`log_probability_tensor` walks the action one token at a time,
+        which is the right shape for sampling, where the next token genuinely
+        is not known yet. For scoring it is the wrong shape twice over: it
+        costs one forward per branching token instead of one per action, and
+        under ``requires_grad`` it holds every one of those activation graphs
+        alive at the same time until backward runs.
+
+        Here the action's tokens are already known, so the whole action is fed
+        in one pass and every needed position is read from that single set of
+        logits. This is the construction the Lab 18d, 19, and 20 training
+        kernel already uses.
+
+        Two reductions apply. Positions whose trie node offers a single
+        continuation contribute exactly zero and need no logits, and because
+        the trie has no prefix collisions those positions are always the
+        trailing ones, so the input is truncated after the last branching
+        position rather than padded out to the full action.
+
+        The returned values match :meth:`log_probability_tensor` element for
+        element. That equivalence is asserted in the notebook against the real
+        checkpoint, because it is what lets the cheap path be trusted.
+        """
+        self._validate_temperature(temperature)
+        if getattr(self.model, "training", False):
+            raise RuntimeError(
+                "score_action requires eval mode: dropout during scoring "
+                "breaks the ratio identity and adds noise to the ratio"
+            )
+
+        sequence = self.trie.sequence_for_word(word)
+        allowed_by_position: list[tuple[int, ...]] = []
+        prefix: tuple[int, ...] = ()
+        for token in sequence:
+            allowed = self.trie.allowed_tokens(prefix)
+            if token not in allowed:
+                raise ValueError(f"word leaves trie at token {token}")
+            allowed_by_position.append(allowed)
+            prefix += (token,)
+
+        scored = [
+            index
+            for index, allowed in enumerate(allowed_by_position)
+            if len(allowed) > 1
+        ]
+        if not scored:
+            zeros = tuple(
+                torch.zeros((), dtype=torch.float32, device=self._device())
+                for _ in sequence
+            )
+            return torch.stack(zeros).sum(), zeros
+
+        keep = scored[-1] + 1
+        prompt_ids = self._prompt_ids(observation.prompt)
+        input_ids = torch.tensor(
+            [tuple(prompt_ids) + tuple(int(token) for token in sequence[: keep - 1])],
+            dtype=torch.long,
+            device=self._device(),
+        )
+        attention_mask = torch.ones_like(input_ids)
+
+        context = nullcontext() if requires_grad else torch.no_grad()
+        with context:
+            outputs = self.model(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                logits_to_keep=keep,
+                use_cache=False,
+            )
+            logits = outputs.logits if hasattr(outputs, "logits") else outputs[0]
+            if logits.shape[1] != keep:
+                raise RuntimeError(f"model ignored logits_to_keep={keep}")
+            if self.memory_probe is not None:
+                self.forward_memory_trace.append(float(self.memory_probe()))
+            self.forward_call_count += 1
+
+            values: list[torch.Tensor] = []
+            for index, token in enumerate(sequence):
+                allowed = allowed_by_position[index]
+                if len(allowed) == 1:
+                    values.append(
+                        torch.zeros((), dtype=torch.float32, device=self._device())
+                    )
+                    continue
+                position = logits[0, index, :]
+                scaled = position[list(allowed)] / temperature
+                values.append(
+                    scaled[allowed.index(token)] - torch.logsumexp(scaled, dim=0)
+                )
+
         return torch.stack(values).sum(), tuple(values)
 
     def exact_log_distribution(
@@ -590,6 +692,7 @@ class TriePolicy:
                 raise RuntimeError("model ignored logits_to_keep=1")
             if self.memory_probe is not None:
                 self.forward_memory_trace.append(float(self.memory_probe()))
+            self.forward_call_count += len(sequences)
             return logits[:, -1, :]
 
     def _sample_token(

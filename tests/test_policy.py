@@ -145,3 +145,171 @@ def test_exact_distribution_enforces_resource_caps():
             assert "model calls" in str(error)
         else:
             raise AssertionError("model-call cap was ignored")
+
+
+class CausalFakeModel(torch.nn.Module):
+    """A deterministic causal stand-in that honours arbitrary logits_to_keep.
+
+    Position ``i`` depends only on ``input_ids[:i + 1]``, which is what makes
+    the equivalence test meaningful: a single multi-position forward has to
+    agree with a sequence of single-position forwards over growing prefixes,
+    and that only holds if the fake respects causality the way a real decoder
+    does.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.scale = torch.nn.Parameter(torch.tensor(1.0))
+        self.seen_lengths: list[int] = []
+        self.seen_keep: list[int] = []
+
+    def forward(self, input_ids, attention_mask, logits_to_keep=0, use_cache=True):
+        assert use_cache is False
+        batch, length = input_ids.shape
+        self.seen_lengths.append(int(length))
+        self.seen_keep.append(int(logits_to_keep))
+        vocabulary = torch.arange(100, dtype=self.scale.dtype)
+        logits = torch.zeros((batch, length, 100), dtype=self.scale.dtype)
+        for row in range(batch):
+            running = 0.0
+            for position in range(length):
+                running += float(input_ids[row, position])
+                logits[row, position] = torch.sin(vocabulary * 0.7 + running * 1.3)
+        keep = logits_to_keep if logits_to_keep else length
+        return SimpleNamespace(logits=logits[:, -keep:, :] * self.scale)
+
+
+def causal_policy():
+    trie = TokenTrie(
+        {"APPLE": (1, 3, 99), "AMPLE": (1, 4, 99), "SHORE": (2, 99)},
+        eos_token_id=99,
+    )
+    return TriePolicy(
+        CausalFakeModel().eval(),
+        FakeTokenizer(),
+        trie,
+        device="cpu",
+        prompt_renderer=lambda prompt: prompt,
+        checkpoint_digest="checkpoint",
+        tokenizer_digest="tokenizer",
+    )
+
+
+def test_score_action_matches_the_sequential_path_token_for_token():
+    """The whole point of the cheap path is that it computes the same thing."""
+    for word in ("APPLE", "AMPLE", "SHORE"):
+        for temperature in (0.5, 1.0, 1.75):
+            sampler = causal_policy()
+            expected_total, expected_values = sampler.log_probability_tensor(
+                observation(),
+                word,
+                temperature=temperature,
+                requires_grad=False,
+            )
+            actual_total, actual_values = sampler.score_action(
+                observation(),
+                word,
+                temperature=temperature,
+                requires_grad=False,
+            )
+            assert len(actual_values) == len(expected_values)
+            for actual, expected in zip(actual_values, expected_values):
+                assert torch.allclose(actual, expected, atol=1e-6), word
+            assert torch.allclose(actual_total, expected_total, atol=1e-6), word
+
+
+def test_score_action_uses_one_forward_where_the_walk_uses_several():
+    sampler = causal_policy()
+    sampler.log_probability_tensor(
+        observation(), "APPLE", temperature=1.0, requires_grad=False
+    )
+    walk_calls = sampler.forward_call_count
+    sampler.score_action(
+        observation(), "APPLE", temperature=1.0, requires_grad=False
+    )
+    assert walk_calls == 2
+    assert sampler.forward_call_count - walk_calls == 1
+
+
+def test_score_action_truncates_after_the_last_branching_position():
+    """Trailing deterministic tokens need no logits, so they are not fed in."""
+    sampler = causal_policy()
+    sampler.score_action(
+        observation(), "SHORE", temperature=1.0, requires_grad=False
+    )
+    assert sampler.model.seen_keep == [1]
+    assert sampler.model.seen_lengths == [1]
+
+    sampler = causal_policy()
+    sampler.score_action(
+        observation(), "APPLE", temperature=1.0, requires_grad=False
+    )
+    assert sampler.model.seen_keep == [2]
+    assert sampler.model.seen_lengths == [2]
+
+
+def test_score_action_returns_exact_zero_for_singleton_positions():
+    sampler = causal_policy()
+    _, values = sampler.score_action(
+        observation(), "APPLE", temperature=1.0, requires_grad=False
+    )
+    assert float(values[2]) == 0.0
+
+
+def test_score_action_carries_gradient_to_the_model():
+    sampler = causal_policy()
+    total, _ = sampler.score_action(observation(), "APPLE", temperature=1.0)
+    total.backward()
+    assert sampler.model.scale.grad is not None
+    assert float(sampler.model.scale.grad.abs()) > 0.0
+
+
+def test_score_action_rejects_a_word_outside_the_trie():
+    sampler = causal_policy()
+    try:
+        sampler.score_action(observation(), "CRANE", temperature=1.0)
+    except ValueError as error:
+        assert "token trie" in str(error)
+    else:
+        raise AssertionError("an out-of-vocabulary action was scored")
+
+
+def test_score_action_refuses_to_run_with_dropout_active():
+    """Dropout during scoring would break the ratio identity gate."""
+    sampler = causal_policy()
+    sampler.model.train()
+    try:
+        sampler.score_action(observation(), "APPLE", temperature=1.0)
+    except RuntimeError as error:
+        assert "eval mode" in str(error)
+    else:
+        raise AssertionError("scoring ran with dropout active")
+
+
+def test_score_action_rejects_nonpositive_temperature():
+    sampler = causal_policy()
+    try:
+        sampler.score_action(observation(), "APPLE", temperature=0.0)
+    except ValueError as error:
+        assert "temperature" in str(error)
+    else:
+        raise AssertionError("nonpositive temperature was accepted")
+
+
+def test_score_action_records_a_memory_probe_sample():
+    trie = TokenTrie(
+        {"APPLE": (1, 3, 99), "AMPLE": (1, 4, 99), "SHORE": (2, 99)},
+        eos_token_id=99,
+    )
+    sampler = TriePolicy(
+        CausalFakeModel().eval(),
+        FakeTokenizer(),
+        trie,
+        device="cpu",
+        prompt_renderer=lambda prompt: prompt,
+        memory_probe=lambda: 4.5,
+    )
+    sampler.score_action(
+        observation(), "APPLE", temperature=1.0, requires_grad=False
+    )
+    assert sampler.forward_memory_trace == [4.5]
