@@ -379,7 +379,9 @@ anchor suite from the existing Lab 18b battery — a fixed set of states spread
 across candidate-count regimes, held out of every arm's training pool. The
 same suite is scored with the same 2,315-word scorer at every drift
 checkpoint of every arm, so drift is always measured against states no arm
-ever trains on.
+ever trains on. Exclude anchors and intervention states reachable by any of
+the 19 reserved evaluation answers, so the held-out gameplay distribution
+cannot influence training or stopping.
 
 ### Compare matched additional data
 
@@ -394,9 +396,11 @@ Start all arms from the same frozen incumbent:
 Persist each eligible unique rollout state before querying the teacher, query
 it once, and retain its `visit_count`. Cap that count at a preregistered value,
 then expand the correction corpus into formatted training presentations.
-`static_matched` receives the same capped weight as its corresponding rollout
-state. `static_random` samples the same total presentation count with
-replacement from a manifested development-only pool.
+Sample one `static_matched` and one `static_random` control for each unique
+eligible rollout state, then repeat both controls by that rollout state's same
+capped weight. This matches the number of state units, visit-weight histogram,
+presentation count, and presentation order. Exclude rollout states already
+present in the original structured training corpus.
 
 All arms use the same number of formatted training presentations, padded-token
 budget, optimizer updates, schedule, and held-out evaluation. Preserve unique
@@ -411,6 +415,10 @@ drawn from the original structured training corpus. The replay sequence and
 its order are sampled once per seed and reused unchanged by every arm in that
 seed's triplet, so replay protection against forgetting is identical across
 arms and the only thing that differs between arms is the correction slot.
+Reduce token loss separately for each presentation, then weight correction and
+replay equally. Derive dropout randomness from the seed and global optimizer
+step, and persist optimizer and scheduler state at every checkpoint, so arm
+order and restarts cannot change the stochastic training path.
 
 ### Training checkpoints and the shared seed-triplet drift stop
 
@@ -441,7 +449,8 @@ The correction gate passes only when:
 
 The bootstrap resamples held-out answer IDs while retaining all three arm
 outcomes and all three seed pairs for each sampled answer. It never resamples
-arms independently.
+arms independently. Report its interval as conditional on the three trained
+seeds; the all-three-seeds direction check supplies the replication evidence.
 
 `static_matched` explains whether a gain comes from coarse state difficulty or
 from policy-specific state differences beyond branch, turn, and candidate

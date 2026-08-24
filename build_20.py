@@ -136,7 +136,7 @@ policy did not need to generate its own states.
 | `static_matched` recovers most of the `rollout_correction` gain | the gain is explained by state difficulty stratification, not by policy-specific rollouts |
 | all three arms improve about equally over the incumbent | the shared replay and additional labeled data explain the gain; rollout source does not matter at this scale |
 | any arm trips a drift stop rule | Lab 19's collapse mode reproduces under a fixed-teacher correction target and the triplet's gate fails regardless of its raw solve rate |
-| no arm improves on the incumbent | 27 to 57 additional correction presentations at this learning rate and replay ratio were not enough signal, not evidence that policy-created correction data cannot work |
+| no arm improves on the incumbent | this correction budget and replay ratio were not enough signal, not evidence that policy-created correction data cannot work |
 
 Nineteen reserved answers are a paired diagnostic, not a precise population
 solve rate. The bootstrap below resamples answer identity, and the seed is
@@ -220,7 +220,7 @@ MODEL_ID = "Qwen/Qwen3-0.6B"
 SEEDS = [42, 45, 47]
 ARMS = ["rollout_correction", "static_random", "static_matched"]
 REGIMES = ["1", "2", "3-10", "11+"]
-ANCHOR_PER_REGIME = 6
+ANCHOR_PER_REGIME = 5
 ANCHOR_STATES = ANCHOR_PER_REGIME * len(REGIMES)
 
 OPENING = "RAISE"
@@ -559,9 +559,9 @@ def candidate_stratum(candidate_count: int) -> str:
     return "11+"
 
 
-def answer_branch_of(history: list[Turn]) -> str:
+def answer_branch_of(history: list[Turn]) -> str | None:
     if not history or history[0].guess != OPENING:
-        raise ValueError("state does not start from the fixed RAISE opening")
+        return None
     return history[0].feedback
 """)
 
@@ -622,6 +622,19 @@ print(
 
 dev_states = all_states.query("split == 'validation'").reset_index(drop=True)
 train_states = all_states.query("split == 'train'").reset_index(drop=True)
+
+
+def reachable_by_reserved_answer(state_key: str) -> bool:
+    history = parse_state_key(state_key)
+    if not history or history[0].guess != OPENING:
+        return False
+    candidates = set(map(int, candidate_indices_from_history(history)))
+    return any(
+        WORD_TO_INDEX[answer] in candidates
+        for answer in RESERVED_ANSWERS
+    )
+
+
 print(
     "unique states:",
     {"train": len(train_states), "validation": len(dev_states)},
@@ -803,14 +816,12 @@ print("scoring kernel verified against Lab 18b and Lab 18d, memory plateaued")
 md("""
 ## 20.8 Training kernel: response-only CE with fixed padding
 
-Every arm uses the same loss: response-only token cross-entropy, computed
-exactly as Lab 18c computed it. The only deliberate departure from Lab 18c is
-padding. Lab 18c padded each batch to its own longest row; Lab 20 pads every
-presentation to a fixed `MAX_LENGTH=256` regardless of its real length, so a
-batch's padded-token budget (`BATCH_SIZE * MAX_LENGTH = 512` tokens) is
-identical for every arm, every seed, and every optimizer update - a stronger,
-content-independent equal-budget guarantee than matching mean lengths after
-the fact would give.
+Every arm uses response-only token cross-entropy. The correction and replay
+rows are reduced separately, then averaged with equal weight. A word that
+tokenizes into three pieces therefore receives the same presentation weight
+as a word that tokenizes into one. Every presentation is also padded to
+`MAX_LENGTH=256`, so both optimization weight and padded-token compute are
+identical across arms.
 """)
 
 code("""
@@ -841,9 +852,10 @@ def collate_presentations(rows: list[dict]) -> dict[str, torch.Tensor]:
     }
 
 
-def response_loss(model, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, int]:
+def response_loss(
+    model, batch: dict[str, torch.Tensor]
+) -> tuple[torch.Tensor, list[int]]:
     supervised = batch["labels"].ne(-100)
-    supervised_tokens = int(supervised.sum())
     first_target = int(supervised.nonzero(as_tuple=False)[:, 1].min())
     logit_positions = torch.arange(
         first_target - 1, batch["input_ids"].shape[1] - 1, device=device
@@ -855,13 +867,32 @@ def response_loss(model, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, 
         use_cache=False,
     ).logits
     targets = batch["labels"][:, logit_positions + 1]
-    loss = F.cross_entropy(
-        logits.reshape(-1, logits.shape[-1]), targets.reshape(-1), ignore_index=-100
+    token_losses = F.cross_entropy(
+        logits.transpose(1, 2), targets, ignore_index=-100, reduction="none"
     )
-    return loss, supervised_tokens
+    target_mask = targets.ne(-100)
+    supervised_tokens = target_mask.sum(dim=1)
+    assert (supervised_tokens > 0).all()
+    presentation_losses = (
+        (token_losses * target_mask).sum(dim=1) / supervised_tokens
+    )
+    assert len(presentation_losses) == BATCH_SIZE
+    return presentation_losses.mean(), [int(value) for value in supervised_tokens]
 
 
-def training_step(model, optimizer, scheduler, batch: dict[str, torch.Tensor]) -> tuple[float, float]:
+def training_seed(seed: int, global_step: int) -> int:
+    payload = f"lab20-dropout|{seed}|{global_step}".encode()
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") % (2**31)
+
+
+def training_step(
+    model,
+    optimizer,
+    scheduler,
+    batch: dict[str, torch.Tensor],
+    dropout_seed: int,
+) -> tuple[float, float]:
+    torch.manual_seed(dropout_seed)
     optimizer.zero_grad(set_to_none=True)
     loss, _ = response_loss(model, batch)
     loss.backward()
@@ -944,8 +975,14 @@ if (RUN_TRAINING or RUN_COLLECTION):
         soak_optimizer, lr_lambda=soak_lr_multiplier
     )
     soak_peaks = []
-    for _ in range(40):
-        _, peak = training_step(soak_model, soak_optimizer, soak_scheduler, soak_batch)
+    for step in range(40):
+        _, peak = training_step(
+            soak_model,
+            soak_optimizer,
+            soak_scheduler,
+            soak_batch,
+            training_seed(SEEDS[0], step),
+        )
         soak_peaks.append(peak)
     third = len(soak_peaks) // 3
     creep = np.mean(soak_peaks[-third:]) - np.mean(soak_peaks[third:2 * third])
@@ -968,19 +1005,31 @@ else:
 md("""
 ## 20.10 Frozen full-list anchor suite
 
-Twenty-four states, six per candidate regime (`1`, `2`, `3-10`, `11+`), drawn
-from Lab 18b's 620-state battery and frozen before any correction data is
-built. States outside the structured `dev` split are preferred, because dev
-states are also the source pool for `static_random` and `static_matched`.
-Where a regime cannot fill six states from outside dev, the remaining slots
+Twenty states, five per candidate regime (`1`, `2`, `3-10`, `11+`), drawn
+from the fixed-`RAISE` portion of Lab 18b's 620-state battery and frozen before
+any correction data is built. States outside the structured `dev` split are
+preferred, because dev states are also the source pool for `static_random` and
+`static_matched`.
+Where a regime cannot fill five states from outside dev, the remaining slots
 come from dev and those exact state keys are excluded from every intervention
-and static pool below - the anchor suite must stay untouched by anything an
-arm ever trains on.
+and static pool below. Any state reachable by a reserved evaluation answer is
+excluded before selection, so the drift stop cannot use the held-out gameplay
+distribution as an early-stopping signal.
 """)
 
 code("""
 battery_frame = lab18b_battery.copy()
 battery_frame["candidate_stratum"] = battery_frame["candidate_count"].map(candidate_stratum)
+battery_frame["starts_from_opening"] = battery_frame["state_key"].map(
+    lambda state_key: parse_state_key(state_key)[0].guess == OPENING
+)
+battery_frame["reserved_reachable"] = battery_frame["state_key"].map(
+    reachable_by_reserved_answer
+)
+battery_frame = battery_frame.loc[
+    battery_frame["starts_from_opening"]
+    & ~battery_frame["reserved_reachable"]
+].reset_index(drop=True)
 dev_state_keys = set(dev_states["state_key"])
 
 anchor_records = []
@@ -1024,6 +1073,7 @@ anchor_states = pd.DataFrame(anchor_records)
 assert len(anchor_states) == ANCHOR_STATES
 assert (anchor_states.groupby("regime").size() == ANCHOR_PER_REGIME).all()
 assert not anchor_states["state_key"].duplicated().any()
+assert not anchor_states["state_key"].map(reachable_by_reserved_answer).any()
 ANCHOR_EXCLUDED_KEYS = set(anchor_dev_exclusions)
 assert ANCHOR_EXCLUDED_KEYS <= dev_state_keys
 train_state_key_set = set(train_states["state_key"])
@@ -1057,8 +1107,9 @@ md("""
 ## 20.11 Static pool from structured dev
 
 The static pool is every unique canonical `NEXT_GUESS` state in the structured
-`dev` split, after removing the seven anchor state keys reserved above. Each
-row already carries its Lab 14 canonical teacher response, verified against
+`dev` split whose history begins with the fixed `RAISE` opening, after removing
+anchor keys and every state reachable by a reserved evaluation answer. Each row
+already carries its Lab 14 canonical teacher response, verified against
 `expert.choose` in 20.5. `static_random` draws from this whole pool.
 `static_matched` draws from the subset sharing a rollout state's exact
 `(answer_branch, turn, candidate_stratum)` key.
@@ -1066,11 +1117,14 @@ row already carries its Lab 14 canonical teacher response, verified against
 
 code("""
 static_pool = dev_states.loc[
-    ~dev_states["state_key"].isin(ANCHOR_EXCLUDED_KEYS)
+    dev_states["answer_branch"].notna()
+    & ~dev_states["state_key"].isin(ANCHOR_EXCLUDED_KEYS)
+    & ~dev_states["state_key"].map(reachable_by_reserved_answer)
 ].reset_index(drop=True)
 assert static_pool["state_key"].is_unique
 assert not set(static_pool["state_key"]) & ANCHOR_EXCLUDED_KEYS
 assert not set(static_pool["state_key"]) & set(anchor_states["state_key"])
+assert not static_pool["state_key"].map(reachable_by_reserved_answer).any()
 
 static_pool["match_key"] = list(zip(
     static_pool["answer_branch"], static_pool["turn"], static_pool["candidate_stratum"]
@@ -1083,6 +1137,9 @@ static_pool_manifest = {
     "experiment": "Lab 20 static pool",
     "source_states_sha256": sha256_file(STRUCTURED_FILES["validation"]),
     "anchor_exclusions": sorted(ANCHOR_EXCLUDED_KEYS),
+    "reserved_reachable_exclusions": int(
+        dev_states["state_key"].map(reachable_by_reserved_answer).sum()
+    ),
     "unique_states": len(static_pool),
     "match_keys": len(static_pool_by_key),
 }
@@ -1317,15 +1374,16 @@ md("""
 ## 20.15 Eligibility, visit cap, and presentation expansion
 
 A rollout state is eligible for `rollout_correction` only if the anchor suite
-never claimed it, and only if the static pool contains at least one state
-sharing its exact `(answer_branch, turn, candidate_stratum)` key - otherwise
-`static_matched` could not build a matched control for it. Every excluded
-state is preserved with its reason rather than silently dropped.
+never claimed it, no reserved evaluation answer can reach it, it was absent
+from the original structured training corpus, and the static pool contains at
+least one state sharing its exact `(answer_branch, turn,
+candidate_stratum)` key. Every excluded state is preserved with its reason
+rather than silently dropped.
 `visit_count` is capped at `VISIT_CAP=3` and expands each eligible unique
-state into that many correction presentations. `static_matched` draws one
-stratum-matched static row per correction presentation, inheriting the same
-capped weight; `static_random` draws the same total count from the whole
-static pool, ignoring stratum.
+state into that many correction presentations. Each control draws one state
+per eligible rollout unit and repeats it by the same capped count. The arms
+therefore share the exact visit-weight histogram rather than only the same
+total number of rows.
 """)
 
 code("""
@@ -1338,6 +1396,10 @@ def classify_eligibility(seed: int, frame: pd.DataFrame) -> pd.DataFrame:
     for row in frame.itertuples():
         if row.state_key in ANCHOR_EXCLUDED_KEYS or row.state_key in set(anchor_states["state_key"]):
             reasons.append("anchor_reserved")
+        elif reachable_by_reserved_answer(row.state_key):
+            reasons.append("reserved_answer_reachable")
+        elif row.state_key in train_state_key_set:
+            reasons.append("seen_in_original_train")
         elif row.match_key not in static_pool_by_key:
             reasons.append("no_matching_static_stratum")
         else:
@@ -1356,6 +1418,8 @@ for seed in SEEDS:
     eligible = frame.loc[frame["eligible"]]
     assert not (set(eligible["state_key"]) & ANCHOR_EXCLUDED_KEYS)
     assert not (set(eligible["state_key"]) & set(anchor_states["state_key"]))
+    assert not eligible["state_key"].map(reachable_by_reserved_answer).any()
+    assert not (set(eligible["state_key"]) & train_state_key_set)
     print(
         f"seed {seed}: {frame['eligible'].sum()}/{len(frame)} unique states eligible, "
         f"presentations after capped expansion: {int(eligible['visit_count_capped'].sum())}"
@@ -1366,16 +1430,12 @@ for seed in SEEDS:
 md("""
 ## 20.16 Build the three arm corpora and the shared replay sequence
 
-`rollout_correction` expands each eligible unique state into
-`visit_count_capped` identical presentations, in deterministic `state_key`
-order. `static_matched` walks that exact same expansion and draws one
-stratum-matched static row per presentation. `static_random` draws the same
-total count from the whole static pool. A single permutation, one per seed,
-shuffles all three arms' presentation lists into the same position stream; the
-shared replay sequence is sampled once per seed from the original structured
-`TRAIN` `NEXT_GUESS` corpus (not deduplicated - a state's natural repetition
-rate in that corpus is preserved) and is reused, unshuffled and in the same
-order, by every arm.
+Each eligible rollout state defines one experimental unit. The notebook draws
+one matched-static state and one random-static state for that unit, then
+repeats all three identities by the rollout state's same capped visit count.
+All arms therefore share the number of units, visit-weight histogram,
+presentation count, and permutation positions. A single replay sequence is
+also reused by every arm.
 """)
 
 code("""
@@ -1397,35 +1457,42 @@ def build_seed_corpora(seed: int) -> dict:
 
     rollout_presentations = []
     static_matched_presentations = []
+    static_random_presentations = []
     matched_rng = seeded_rng(seed, STATIC_MATCHED_STREAM)
+    random_rng = seeded_rng(seed, STATIC_RANDOM_STREAM)
     for row in eligible.itertuples():
+        group = static_pool_by_key[row.match_key]
+        static_matched_row = static_pool.loc[
+            group[int(matched_rng.integers(len(group)))]
+        ]
+        static_random_row = static_pool.loc[
+            int(random_rng.integers(len(static_pool)))
+        ]
         for visit_index in range(int(row.visit_count_capped)):
             rollout_presentations.append({
                 "state_key": row.state_key,
                 "prompt": row.prompt,
                 "response": row.teacher_guess,
+                "unit_id": row.state_key,
                 "visit_index": visit_index,
             })
-            group = static_pool_by_key[row.match_key]
-            static_row = static_pool.loc[group[int(matched_rng.integers(len(group)))]]
             static_matched_presentations.append({
-                "state_key": static_row["state_key"],
-                "prompt": static_row["prompt"],
-                "response": static_row["response"],
+                "state_key": static_matched_row["state_key"],
+                "prompt": static_matched_row["prompt"],
+                "response": static_matched_row["response"],
+                "unit_id": row.state_key,
                 "matched_to": row.state_key,
+                "visit_index": visit_index,
+            })
+            static_random_presentations.append({
+                "state_key": static_random_row["state_key"],
+                "prompt": static_random_row["prompt"],
+                "response": static_random_row["response"],
+                "unit_id": row.state_key,
+                "sampled_for": row.state_key,
+                "visit_index": visit_index,
             })
     total_presentations = len(rollout_presentations)
-
-    random_rng = seeded_rng(seed, STATIC_RANDOM_STREAM)
-    random_indices = random_rng.integers(len(static_pool), size=total_presentations)
-    static_random_presentations = [
-        {
-            "state_key": static_pool.loc[index, "state_key"],
-            "prompt": static_pool.loc[index, "prompt"],
-            "response": static_pool.loc[index, "response"],
-        }
-        for index in random_indices
-    ]
 
     replay_rng = seeded_rng(seed, REPLAY_STREAM)
     train_pool = next_guess_rows["train"]
@@ -1593,6 +1660,14 @@ for seed in SEEDS:
     assert len(set(presentation_counts.values())) == 1, presentation_counts
     assert presentation_counts[ARMS[0]] == len(bundle["replay_sequence"])
     assert presentation_counts[ARMS[0]] == bundle["total_presentations"]
+    unit_weights = {
+        arm: pd.Series([
+            row["unit_id"] for row in bundle["ordered"][arm]
+        ]).value_counts().sort_index()
+        for arm in ARMS
+    }
+    assert unit_weights["rollout_correction"].equals(unit_weights["static_random"])
+    assert unit_weights["rollout_correction"].equals(unit_weights["static_matched"])
     padded_budget = BATCH_SIZE * MAX_LENGTH
     assert padded_budget == 512
     print(
@@ -1638,7 +1713,7 @@ for seed in SEEDS:
 md("""
 ## 20.21 Anchor evaluation and shared drift stop rules
 
-At every checkpoint, every arm's adapter scores all 2,315 words at all 24
+At every checkpoint, every arm's adapter scores all 2,315 words at all 20
 frozen anchor states with the exact scorer verified in 20.7. Four rules,
 fixed before training and aimed at reproducing Lab 19-scale collapse rather
 than at tuning performance, compare that arm's anchor summary against the
@@ -1808,8 +1883,14 @@ def block_manifest_contract(seed: int, arm: str, start_step: int, end_step: int)
         "grad_clip": GRAD_CLIP,
         "max_length": MAX_LENGTH,
         "batch_size": BATCH_SIZE,
+        "presentation_loss_weight": 0.5,
         "total_presentations": bundle["total_presentations"],
         "checkpoint_sha256": checkpoint_hashes[seed],
+        "start_adapter_sha256": sha256_file(
+            resolve_checkpoint(seed, arm, start_step)
+            / "adapter_model.safetensors"
+        ),
+        "dropout_seed_contract": "sha256(lab20-dropout|seed|zero_based_global_step)",
     }
 
 
@@ -1829,6 +1910,9 @@ def train_block(seed: int, arm: str, start_step: int, end_step: int) -> dict:
             raise FileNotFoundError(f"checkpoint exists without a manifest: {end_dir}")
         manifest = json.loads(manifest_path.read_text())
         validate_block_manifest(manifest, contract)
+        assert manifest["output_adapter_sha256"] == sha256_file(
+            end_dir / "adapter_model.safetensors"
+        )
         return manifest
 
     in_progress = end_dir.with_name(end_dir.name + "-in-progress")
@@ -1858,11 +1942,20 @@ def train_block(seed: int, arm: str, start_step: int, end_step: int) -> dict:
     scheduler = torch.optim.lr_scheduler.LambdaLR(
         optimizer, lr_lambda=lr_multiplier, last_epoch=-1
     )
-    for _ in range(start_step):
-        scheduler.step()
     optimizer_path = start_path / "lab20-optimizer.pt"
-    if optimizer_path.exists():
+    scheduler_path = start_path / "lab20-scheduler.pt"
+    if start_step > 0:
+        if not optimizer_path.exists() or not scheduler_path.exists():
+            raise FileNotFoundError(
+                f"step {start_step} checkpoint lacks optimizer or scheduler state"
+            )
         optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
+        scheduler.load_state_dict(torch.load(scheduler_path, map_location=device))
+        assert scheduler.last_epoch == start_step
+        restored_lrs = scheduler.get_last_lr()
+        assert len(restored_lrs) == len(optimizer.param_groups)
+        for group, restored_lr in zip(optimizer.param_groups, restored_lrs):
+            group["lr"] = restored_lr
 
     bundle = seed_corpora[seed]
     corrections = bundle["ordered"][arm]
@@ -1871,7 +1964,13 @@ def train_block(seed: int, arm: str, start_step: int, end_step: int) -> dict:
     for position in range(start_step, end_step):
         batch = collate_presentations([corrections[position], replay[position]])
         batch = {key: value.to(device) for key, value in batch.items()}
-        _, peak = training_step(model, optimizer, scheduler, batch)
+        _, peak = training_step(
+            model,
+            optimizer,
+            scheduler,
+            batch,
+            training_seed(seed, position),
+        )
         peak_memory = max(peak_memory, peak)
         assert peak < MEMORY_ABORT_GIB, (
             f"memory regression training seed {seed} {arm} at update {position + 1}: "
@@ -1881,7 +1980,14 @@ def train_block(seed: int, arm: str, start_step: int, end_step: int) -> dict:
     in_progress.mkdir(parents=True, exist_ok=False)
     model.save_pretrained(in_progress)
     torch.save(optimizer.state_dict(), in_progress / "lab20-optimizer.pt")
-    manifest = dict(contract, peak_driver_memory_gib=peak_memory)
+    torch.save(scheduler.state_dict(), in_progress / "lab20-scheduler.pt")
+    manifest = dict(
+        contract,
+        peak_driver_memory_gib=peak_memory,
+        output_adapter_sha256=sha256_file(
+            in_progress / "adapter_model.safetensors"
+        ),
+    )
     atomic_json(manifest, in_progress / "lab20-run.json")
     release_model(model)
     del model, optimizer, scheduler
@@ -1893,10 +1999,11 @@ def train_block(seed: int, arm: str, start_step: int, end_step: int) -> dict:
 md("""
 ## 20.23 Anchor evaluation and the shared stop record
 
-Every arm's adapter is scored against all 24 anchors at every checkpoint it
+Every arm's adapter is scored against all 20 anchors at every checkpoint it
 reaches. Step 0 is identical for all three arms - the untouched incumbent -
 so its anchor summary is computed once per seed and reused as the baseline
-`drift_check` compares every later checkpoint against.
+`drift_check` compares every later checkpoint against. Cached evaluations bind
+to both the adapter hash and anchor-manifest hash.
 """)
 
 code("""
@@ -1906,14 +2013,29 @@ def anchor_eval_path(seed: int, arm: str, step: int) -> Path:
 
 def evaluate_anchor_checkpoint(seed: int, arm: str, step: int) -> dict:
     result_path = anchor_eval_path(seed, arm, step)
+    checkpoint_path = resolve_checkpoint(seed, arm, step)
+    checkpoint_sha256 = sha256_file(
+        checkpoint_path / "adapter_model.safetensors"
+    )
+    expected_contract = {
+        "seed": seed,
+        "arm": arm,
+        "step": step,
+        "checkpoint_sha256": checkpoint_sha256,
+        "anchor_manifest_sha256": sha256_file(
+            RESULTS_DIR / "anchor-manifest.json"
+        ),
+    }
     if result_path.exists():
-        return json.loads(result_path.read_text())
+        payload = json.loads(result_path.read_text())
+        for key, value in expected_contract.items():
+            assert payload[key] == value
+        return payload
     if not (RUN_TRAINING or RUN_COLLECTION):
         raise FileNotFoundError(
             f"anchor evaluation missing for seed {seed} {arm} step {step} "
             "and RUN_TRAINING=False"
         )
-    checkpoint_path = resolve_checkpoint(seed, arm, step)
     assert checkpoint_path.exists(), f"missing checkpoint {checkpoint_path}"
     model = load_arm_adapter(checkpoint_path)
     score_matrix = score_anchor_states(model)
@@ -1922,7 +2044,7 @@ def evaluate_anchor_checkpoint(seed: int, arm: str, step: int) -> dict:
     metrics = anchor_metrics(score_matrix)
     summary = anchor_summary(metrics)
     atomic_csv(metrics, RESULTS_DIR / f"anchor-metrics-{arm}-seed{seed}-step{step:05d}.csv")
-    payload = dict(summary, seed=seed, arm=arm, step=step)
+    payload = dict(summary, **expected_contract)
     atomic_json(payload, result_path)
     return payload
 
@@ -2119,10 +2241,15 @@ md("""
 code("""
 def evaluate_arm(seed: int, arm: str, step: int) -> tuple[pd.DataFrame, pd.DataFrame]:
     paths = held_out_paths(seed, arm)
+    checkpoint_path = resolve_checkpoint(seed, arm, step)
+    checkpoint_sha256 = sha256_file(
+        checkpoint_path / "adapter_model.safetensors"
+    )
     progress = {
         "seed": seed,
         "arm": arm,
         "step": step,
+        "checkpoint_sha256": checkpoint_sha256,
         "answers": list(DEFAULT_EVAL_ANSWERS),
     }
     if paths["progress"].exists():
@@ -2169,7 +2296,6 @@ def evaluate_arm(seed: int, arm: str, step: int) -> tuple[pd.DataFrame, pd.DataF
 
     model = None
     if completed != set(DEFAULT_EVAL_ANSWERS):
-        checkpoint_path = resolve_checkpoint(seed, arm, step)
         model = load_arm_adapter(checkpoint_path)
     for answer in DEFAULT_EVAL_ANSWERS:
         if answer in completed:
@@ -2315,14 +2441,12 @@ md("""
 ## 20.29 Primary estimate: pooled answer-level bootstrap and the gate
 
 The primary contrast is `rollout_correction - static_random`, equal-weighted
-across the three seeds. The pooled bootstrap resamples the 19 answer IDs with
-replacement; for each sampled answer it keeps every seed's paired outcome for
-both arms, averages the per-seed solve-rate difference over the resampled
-multiset of answers, and then averages the three seeds - one statistic per
-resample, 10,000 resamples, a fixed seed. The gate requires that no seed
-triplet stopped, the mean gain is at least 0.05, every one of the three
-seed-paired gains is strictly positive, and the 95% percentile CI lower bound
-is above zero. `static_matched` is diagnostic only and never enters the gate.
+across the three seeds. The paired answer-bootstrap interval is conditional
+on these three trained seeds: it resamples the 19 answer IDs while retaining
+every paired seed/arm outcome. Replication evidence comes from requiring a
+positive effect in all three seeds. The pre-registered five-point mean-gain
+check remains in the gate for continuity, although with 19 games it is
+mathematically redundant once every seed improves by at least one game.
 """)
 
 code("""
@@ -2365,6 +2489,9 @@ gate = {
     "mean_gain": mean_gain,
     "bootstrap_ci_low": float(ci_low),
     "bootstrap_ci_high": float(ci_high),
+    "bootstrap_scope": (
+        "paired answer bootstrap conditional on these three trained seeds"
+    ),
     "any_triplet_stopped": any_triplet_stopped,
     "checks": {
         "no_triplet_stopped": not any_triplet_stopped,
@@ -2476,11 +2603,10 @@ bootstrap CI reflects that. The static pools are drawn from the same
 structured `dev` split the rollout draws its answers from, so `static_random`
 and `static_matched` are already fairly strong controls - a null result here
 says less about whether *any* new data helps than about whether policy-reached
-states specifically help beyond static dev data. Optimizer-state continuity
-across a resumed training block relies on saved Adam moments and step-indexed
-scheduler state; per-layer dropout RNG state is not separately checkpointed,
-so a resumed run's dropout stream can diverge slightly from an uninterrupted
-one - noted here rather than silently assumed away.
+states specifically help beyond static dev data. Adam and scheduler state are
+saved at every block boundary. Dropout is reseeded from `(seed, global_step)`
+before every update, so arm order and notebook restarts cannot change the
+stochastic optimization path.
 
 **Deliberately out of scope.** This experiment does not iterate: it collects
 one rollout corpus, trains once per arm to a stop point, and evaluates once.
