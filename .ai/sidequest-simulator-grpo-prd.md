@@ -14,6 +14,11 @@ The side quest earns one claim:
 > Can sparse whole-game reward improve the best observed Lab 18d policy without
 > destroying the full-list ranking that made it playable?
 
+SQ31 includes the environment, stochastic policy, immutable rollout record, and
+the sampling-policy gate. SQ34 consumes those frozen contracts for one bounded
+simulator-GRPO run. Neither side quest changes the canonical Part IV entry
+criteria.
+
 ## Entry checkpoint
 
 Use the Lab 18d seed 45 adapter:
@@ -58,9 +63,10 @@ The side quest includes:
 
 1. an explicit Wordle environment;
 2. a stochastic policy over the current 2,315-answer vocabulary;
-3. a sampling-policy gate;
-4. one bounded simulator-GRPO run;
-5. deterministic held-out evaluation and full-list drift analysis.
+3. an immutable rollout record that binds policy decisions to transitions;
+4. a sampling-policy gate;
+5. one bounded simulator-GRPO run;
+6. deterministic held-out evaluation and full-list drift analysis.
 
 It excludes:
 
@@ -82,16 +88,23 @@ that answer different questions.
 
 ### Interface
 
-Add one environment adapter around the existing `tiny_wordle.game` and
-`tiny_wordle.expert` mechanics:
+Add one model-free environment adapter around the existing `tiny_wordle.game`
+and `tiny_wordle.expert` mechanics:
 
 ```python
-observation = env.reset(answer_id, policy_view)
+start = env.reset(answer, episode_id=..., seed=...)
+# start.observation, start.reward, start.done, start.opening_record
 observation, reward, done, info = env.step(action)
 ```
 
 The environment owns the hidden answer, transition rules, terminal truth, and
 answer-dependent diagnostics. The policy receives only `observation`.
+
+`reset` returns a `ResetResult`, not a bare observation. When `opening="RAISE"`,
+the opening is a real first transition and consumes one of the six turns. This
+handles the valid answer `RAISE` explicitly: reset returns a solved result with
+reward 1 and no policy action is requested. `opening=None` is supported for
+experiments where the policy chooses turn 1.
 
 ### Policy observation
 
@@ -146,7 +159,14 @@ enter the reward.
 
 ### Trace
 
-Persist one immutable record per action:
+Persist one immutable record per action. The collector creates the record once,
+after the policy decision and environment transition are both available:
+
+```python
+decision = policy.sample(observation, temperature=..., seed=...)
+transition = env.step(decision.word)
+step = TrajectoryStep(observation, decision, transition)
+```
 
 ```text
 episode_id
@@ -179,6 +199,12 @@ teacher_diagnostics
 Keep protected answer IDs and teacher diagnostics outside the next policy
 observation.
 
+The rollout module must keep `PolicyDecision`, `TrajectoryStep`, and
+`Trajectory` immutable. Replay recomputes the environment transition and
+behavior log probability from the frozen checkpoint and tokenizer contract; it
+does not trust edited feedback, counts, action probabilities, or checkpoint
+metadata.
+
 ### Environment tests
 
 Tests must cover:
@@ -197,7 +223,7 @@ Tests must cover:
 domain matches the benchmark, and tests document every intentional transition
 rule.
 
-## Sampling-policy gate
+### Sampling-policy gate
 
 The deterministic Lab 18d argmax remains the evaluation decoder. Training uses
 a separate stochastic policy.
@@ -207,8 +233,19 @@ a separate stochastic policy.
 Build a token trie from:
 
 ```text
-tokenize(answer word + EOS)
+the verified contextual suffix of tokenize(prompt + answer word + EOS text)
 ```
+
+The implementation may use the equivalent standalone
+`tokenize(answer word) + [eos_token_id]` form only after asserting that it
+matches the contextual suffix for all 2,315 answers. Freeze these tokenizer
+invariants:
+
+* every leaf sequence is unique;
+* no non-EOS word sequence contains EOS internally;
+* no leaf sequence is a prefix of another;
+* decoding each non-EOS sequence returns its declared answer;
+* the suffix starts immediately after the frozen rendered prompt prefix.
 
 At each generation step:
 
@@ -236,6 +273,13 @@ The gate must show:
   fixed state suite;
 * no hidden environment value enters sampler input.
 
+The exact distribution walk reports the measured trie shape before loading the
+model. It records total nodes, branching nodes by depth, maximum depth, and
+token positions. Only branching nodes require a normalization forward; the
+implementation must batch them by depth and enforce a model-call and
+peak-memory cap. The exact walk is the reference distribution for the
+frequency test, not another Monte Carlo sample.
+
 ### Reward-diversity pilot
 
 Use development answers only. The 19 reserved answers remain untouched.
@@ -252,8 +296,13 @@ answers and record:
 * repeat rate;
 * episode length and model calls.
 
-Choose the temperature with the largest mixed-outcome group fraction. Break
-ties in favor of the lower temperature. Freeze it before any optimizer update.
+Split development answers into calibration and confirmation sets. Choose the
+temperature on calibration, break ties in favor of the lower temperature, and
+report the chosen temperature on confirmation. Pre-register a minimum
+mixed-outcome fraction and an interval width or lower confidence bound that
+must be met. If the confirmation result misses the gate, record that sparse
+reward lacks enough diversity rather than selecting a winner by default.
+Freeze the temperature before any optimizer update.
 
 The training run is blocked when every tested temperature produces too few
 mixed-outcome groups to support a group-relative update. Record that null as a
@@ -262,6 +311,33 @@ sampling-policy result rather than adding shaped reward.
 **Complete when:** action probabilities pass replay and frequency tests, one
 temperature is frozen from development evidence, and the pilot shows whether
 sparse reward supplies nonzero group-relative advantages.
+
+### SQ31 implementation modules
+
+SQ31 owns these modules and tests:
+
+```text
+src/tiny_wordle/representation.py
+src/tiny_wordle/environment.py
+src/tiny_wordle/policy.py
+src/tiny_wordle/rollout.py
+tests/test_representation.py
+tests/test_environment.py
+tests/test_policy.py
+tests/test_rollout.py
+```
+
+`representation.py` is the source of truth for SQ31 and later work. The older
+builders keep their inline copies because their executed notebooks are frozen
+evidence. SQ31 must not claim that those historical copies import the new
+module.
+
+The trie policy is chosen over an exact full-string softmax because of compute,
+not because the latter requires one unbounded autograd graph. A full-string
+normalizer gradient can be computed in chunks with detached probabilities, but
+it still requires a 2,315-word sweep in the backward pass of every update.
+Subset normalizers, stale score caches, and log importance-sampled normalizers
+would define a different or biased objective.
 
 ## SQ34: simulator GRPO
 
@@ -299,6 +375,13 @@ optimizer update. Do not manufacture variance with a local proxy reward.
 Assign the trajectory advantage to each policy action in that episode. The
 update uses the stored behavior-policy log probability and the newly evaluated
 current-policy log probability for the same trie-constrained action.
+Use the word-level ratio
+`exp(sum(token_log_probability_current - token_log_probability_behavior))`.
+Clip that word-level ratio. Normalize each episode's action losses before
+averaging the group, so a six-turn failure does not outweigh an early win.
+Compute the reference-policy KL with the same trie mask and a sampled k3
+estimator. Score the current policy with dropout disabled. Use one optimizer
+epoch per behavior batch and record the realized ratio spread.
 
 ### Policy update
 
@@ -358,6 +441,11 @@ When a rule trips, stop training at that checkpoint and retain the traces.
 
 The fixed anchor suite is a safety signal. It does not select the checkpoint
 with the best held-out gameplay.
+
+At every checkpoint report mixed-group fraction, action entropy by turn, repeat
+rate, and effective sample size. If a pre-registered diversity-collapse rule
+trips, stop and retain the traces. Do not silently retune temperature during
+training.
 
 ### Memory gate
 
@@ -427,20 +515,29 @@ running.
 ## Deliverables
 
 ```text
+src/tiny_wordle/representation.py
 src/tiny_wordle/environment.py
+src/tiny_wordle/policy.py
+src/tiny_wordle/rollout.py
+tests/test_representation.py
 tests/test_environment.py
-notebooks/31_wordle_environment.ipynb
-notebooks/34_simulator_grpo.ipynb
-.ai/docs/31_wordle_environment-cell-outputs.md
-.ai/docs/31_wordle_environment-analysis.md
-.ai/docs/34_simulator_grpo-cell-outputs.md
-.ai/docs/34_simulator_grpo-analysis.md
-results/sidequest31/
-results/sidequest34/
+tests/test_policy.py
+tests/test_rollout.py
+build_sq31.py
+notebooks/sq31_wordle_environment.ipynb
+notebooks/sq34_simulator_grpo.ipynb
+.ai/docs/sq31_wordle_environment-cell-outputs.md
+.ai/docs/sq31_wordle_environment-analysis.md
+.ai/docs/sq34_simulator_grpo-cell-outputs.md
+.ai/docs/sq34_simulator_grpo-analysis.md
+results/sq31/
+results/sq34/
 ```
 
-Notebook builders remain the source of generated notebook structure, following
-the existing `build_18d.py`, `build_19.py`, and `build_20.py` pattern.
+Notebook builders remain the source of generated notebook structure. SQ31
+follows the existing `build_18d.py`, `build_19.py`, and `build_20.py` pattern.
+SQ34 gets its own `build_sq34.py` and must not put optimizer code in the SQ31
+builder.
 
 ## Relationship to the main curriculum
 
