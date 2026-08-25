@@ -10,11 +10,23 @@ if torch.backends.mps.is_available():
     print(f"MPS cap: {MEMORY_CAP_GIB:.0f} GiB of {total_gib:.0f} GiB")
 
 RUN_MODEL = os.environ.get("LAB19E_RUN_MODEL", "0") == "1"
+RUN_TRAINING = (
+    RUN_MODEL
+    and os.environ.get("LAB19E_RUN_TRAINING", "1") == "1"
+)
+REUSE_GATE_B = (
+    RUN_MODEL
+    and os.environ.get("LAB19E_REUSE_GATE_B", "0") == "1"
+)
 print("LAB19E_RUN_MODEL:", RUN_MODEL)
+print("LAB19E_RUN_TRAINING:", RUN_TRAINING)
+print("LAB19E_REUSE_GATE_B:", REUSE_GATE_B)
 ```
 
     MPS cap: 128 GiB of 464 GiB
-    LAB19E_RUN_MODEL: False
+    LAB19E_RUN_MODEL: True
+    LAB19E_RUN_TRAINING: True
+    LAB19E_REUSE_GATE_B: True
 
 
 # Lab 19e - Simulator-ranked answer-constrained policy
@@ -2174,12 +2186,14 @@ else:
     print("Gate B skipped; set LAB19E_RUN_MODEL=1 under memguard")
 ```
 
-    Gate B skipped; set LAB19E_RUN_MODEL=1 under memguard
+    device: mps
+    scorer sha256: 2e35dbf6edcad8211678b605687e6da0537dc5f57db8dfe8887a7a0b3be59b16
+    action token widths: [2, 3, 4]
 
 
 
 ```python
-if RUN_MODEL:
+if RUN_MODEL and not REUSE_GATE_B:
     reset_seeds(SEED)
     soak_model, soak_parameters, soak_incumbent_parameters = (
         load_dual_adapter()
@@ -2482,11 +2496,21 @@ if RUN_MODEL:
     release_model(soak_model)
     del soak_model
     print("Gate B passed:", gate_b)
+elif RUN_MODEL:
+    gate_b = json.loads((RESULTS_DIR / "gate-b.json").read_text())
+    assert gate_b["passed"] is True
+    assert gate_b["action_scorer_max_abs_diff"] < 1e-3
+    assert gate_b["full_list_max_abs_diff"] < 1e-3
+    assert gate_b["full_list_peak_gib"] < MEMORY_ABORT_GIB
+    assert gate_b["training_peak_gib"] < MEMORY_ABORT_GIB
+    assert gate_b["full_list_creep_gib"] < 0.5
+    assert gate_b["training_creep_gib"] < 0.5
+    print("Gate B reused:", gate_b)
 else:
     print("Gate B numerical and memory checks not run")
 ```
 
-    Gate B numerical and memory checks not run
+    Gate B reused: {'action_scorer_max_abs_diff': 9.918212890625e-05, 'equivalence_action_length_buckets': [2, 3, 4], 'equivalence_prompt_count': 3, 'full_list_creep_gib': 0.0, 'full_list_late_range_gib': 0.0, 'full_list_max_abs_diff': 0.0, 'full_list_peak_gib': 54.76835632324219, 'max_action_width': 4, 'mean_utility_gap_bits': 1.1222556248000002, 'passed': True, 'support_category_sizes': {'candidates': 4, 'current': 16, 'incumbent': 16, 'open_teacher': 16}, 'support_size': 64, 'support_size_before_padding': 32, 'support_slots_before_deduplication': 64, 'tie_pair_count': 816, 'training_creep_gib': 0.0, 'training_late_range_gib': 0.0, 'training_peak_gib': 54.88847351074219, 'valid_pair_count': 1200}
 
 
 ## Gate C: matched-arm training with live drift stops
@@ -2517,7 +2541,7 @@ checkpoint.
 
 
 ```python
-if RUN_MODEL:
+if RUN_TRAINING:
     anchor_records = []
     for row in anchor_source.itertuples(index=False):
         history = parse_state_key(row.state_key)
@@ -2801,12 +2825,9 @@ else:
     print("Gate C helpers skipped")
 ```
 
-    Gate C helpers skipped
-
-
 
 ```python
-if RUN_MODEL:
+if RUN_TRAINING:
     for checkpoint in TRAINED_CHECKPOINTS.values():
         if checkpoint.exists():
             raise FileExistsError(
@@ -3341,7 +3362,18 @@ else:
     print("training skipped")
 ```
 
-    training skipped
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+    matched hard stop at step 32: entropy-ranking:regime_1_candidate_mass_collapse, entropy-ranking:regime_11+_candidate_mass_collapse, entropy-ranking:regime_2_candidate_mass_collapse, entropy-ranking:regime_3-10_candidate_mass_collapse
+
+
+    matched training manifests: {'preservation-control': {'experiment': 'Lab 19e matched simulator-ranked answer-constrained policy', 'arm': 'preservation-control', 'task_loss': 'zero', 'preregistration_sha256': '0b5686401897aeed6d0bc81c7c5abad8bcdb98e9886cd2e297fe1fe84b103b05', 'scorer_sha256': '2e35dbf6edcad8211678b605687e6da0537dc5f57db8dfe8887a7a0b3be59b16', 'incumbent_sha256': 'a3b849ac3cbc57c085ec4f1f7697d113f13e87168377420662baaba3b75d614c', 'initial_policy_digest': 'e3f95f58c0639e068300fd02af8d533c797800b6c70d95bb7fc16e81e1923b6c', 'initial_incumbent_digest': 'e3f95f58c0639e068300fd02af8d533c797800b6c70d95bb7fc16e81e1923b6c', 'frozen_incumbent_digest': 'e3f95f58c0639e068300fd02af8d533c797800b6c70d95bb7fc16e81e1923b6c', 'final_policy_digest': '62dbc40a46aa3c1eed331a2d160057931473b8dbf9495a40b910e38143a91560', 'completed_updates': 32, 'planned_updates': 256, 'matched_hard_stop': True, 'arm_hard_stop': False, 'tripped_rules': [], 'stop_step': 32, 'final_policy_path': '/Users/ianphil/src/tiny-wordle-lab-v2/checkpoints/qwen3-0.6b-wordle-lab19e-preservation-control-seed45/policy', 'last_checkpoint_path': '/Users/ianphil/src/tiny-wordle-lab-v2/results/lab19e/arms/preservation-control/checkpoints/step-0032/policy', 'incumbent_top16_sha256': '4bf5ce8c6b8729d6c5341c7c564ec0a5248729b0d725f234b172a168d3b87cef', 'online_refresh_sha256': {'online-refresh-step-0000.jsonl': 'a38b6c02afed25881f2413b44a16ac51f7c2f066268692a91810c68081466d6d', 'online-refresh-step-0016.jsonl': '4024d978800d0acbbba2ada6261d6b1514679afd6c83f06899c9693829f70073'}, 'elapsed_seconds': 519.1927355420194}, 'entropy-ranking': {'experiment': 'Lab 19e matched simulator-ranked answer-constrained policy', 'arm': 'entropy-ranking', 'task_loss': 'pairwise_entropy_ranking', 'preregistration_sha256': '0b5686401897aeed6d0bc81c7c5abad8bcdb98e9886cd2e297fe1fe84b103b05', 'scorer_sha256': '2e35dbf6edcad8211678b605687e6da0537dc5f57db8dfe8887a7a0b3be59b16', 'incumbent_sha256': 'a3b849ac3cbc57c085ec4f1f7697d113f13e87168377420662baaba3b75d614c', 'initial_policy_digest': 'e3f95f58c0639e068300fd02af8d533c797800b6c70d95bb7fc16e81e1923b6c', 'initial_incumbent_digest': 'e3f95f58c0639e068300fd02af8d533c797800b6c70d95bb7fc16e81e1923b6c', 'frozen_incumbent_digest': 'e3f95f58c0639e068300fd02af8d533c797800b6c70d95bb7fc16e81e1923b6c', 'final_policy_digest': '56a2f716ab11dbaba6ae5b644085d26db6a995773cbe97f4ecd4e892b0ef9a7e', 'completed_updates': 32, 'planned_updates': 256, 'matched_hard_stop': True, 'arm_hard_stop': True, 'tripped_rules': ['regime_1_candidate_mass_collapse', 'regime_11+_candidate_mass_collapse', 'regime_2_candidate_mass_collapse', 'regime_3-10_candidate_mass_collapse'], 'stop_step': 32, 'final_policy_path': '/Users/ianphil/src/tiny-wordle-lab-v2/checkpoints/qwen3-0.6b-wordle-lab19e-entropy-ranking-seed45/policy', 'last_checkpoint_path': '/Users/ianphil/src/tiny-wordle-lab-v2/results/lab19e/arms/entropy-ranking/checkpoints/step-0032/policy', 'incumbent_top16_sha256': '4bf5ce8c6b8729d6c5341c7c564ec0a5248729b0d725f234b172a168d3b87cef', 'online_refresh_sha256': {'online-refresh-step-0000.jsonl': 'a38b6c02afed25881f2413b44a16ac51f7c2f066268692a91810c68081466d6d', 'online-refresh-step-0016.jsonl': '49fe7cfd13d2c8ac03fed4691e0f000078edebf8eceadbdd6515370da53a8f58'}, 'elapsed_seconds': 519.5341776669957}}
 
 
 ## Frozen outcome evaluation
@@ -3360,7 +3392,7 @@ mass/rank guard, and solve at least as many games as both comparators.
 
 
 ```python
-if RUN_MODEL:
+if RUN_TRAINING:
     def load_evaluation_model(
         policy_path: Path | None,
     ):
@@ -3887,7 +3919,233 @@ else:
     print("frozen outcome evaluation skipped")
 ```
 
-    frozen outcome evaluation skipped
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+
+    Loading weights:   0%|          | 0/311 [00:00<?, ?it/s]
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>adapter</th>
+      <th>states</th>
+      <th>mean_entropy_regret_bits</th>
+      <th>median_entropy_regret_bits</th>
+      <th>open_teacher_exact_match_rate</th>
+      <th>global_teacher_tie_match_rate</th>
+      <th>chosen_is_candidate_rate</th>
+      <th>candidate_only_teacher_match_rate</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>entropy-ranking</td>
+      <td>64</td>
+      <td>0.835633</td>
+      <td>0.666667</td>
+      <td>0.0</td>
+      <td>0.125000</td>
+      <td>0.296875</td>
+      <td>0.109375</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>incumbent</td>
+      <td>64</td>
+      <td>0.784042</td>
+      <td>0.666667</td>
+      <td>0.0</td>
+      <td>0.078125</td>
+      <td>0.453125</td>
+      <td>0.156250</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>preservation-control</td>
+      <td>64</td>
+      <td>0.773839</td>
+      <td>0.666667</td>
+      <td>0.0</td>
+      <td>0.109375</td>
+      <td>0.453125</td>
+      <td>0.171875</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>adapter</th>
+      <th>games</th>
+      <th>solved</th>
+      <th>solve_rate</th>
+      <th>model_calls</th>
+      <th>raw_scoring_calls</th>
+      <th>singleton_closures</th>
+      <th>raw_singleton_calls</th>
+      <th>raw_singleton_median_rank</th>
+      <th>raw_singleton_top1_rate</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>entropy-ranking</td>
+      <td>19</td>
+      <td>17</td>
+      <td>0.894737</td>
+      <td>48</td>
+      <td>62</td>
+      <td>14</td>
+      <td>14</td>
+      <td>12.0</td>
+      <td>0.285714</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>incumbent</td>
+      <td>19</td>
+      <td>15</td>
+      <td>0.789474</td>
+      <td>58</td>
+      <td>69</td>
+      <td>11</td>
+      <td>11</td>
+      <td>3.0</td>
+      <td>0.454545</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>preservation-control</td>
+      <td>19</td>
+      <td>15</td>
+      <td>0.789474</td>
+      <td>57</td>
+      <td>68</td>
+      <td>11</td>
+      <td>11</td>
+      <td>3.0</td>
+      <td>0.454545</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>experiment</th>
+      <th>preregistration_sha256</th>
+      <th>scorer_sha256</th>
+      <th>incumbent_sha256</th>
+      <th>arm_adapter_sha256</th>
+      <th>completed_updates</th>
+      <th>matched_hard_stop</th>
+      <th>stop_step</th>
+      <th>mean_dev_entropy_regret_bits</th>
+      <th>treatment_improvement_vs_incumbent_bits</th>
+      <th>treatment_improvement_vs_control_bits</th>
+      <th>treatment_minus_control_change_in_regret_bits</th>
+      <th>solve_counts</th>
+      <th>raw_singleton_ranking</th>
+      <th>arm_outcomes</th>
+      <th>criteria</th>
+      <th>selected_trained_recipe</th>
+      <th>control_is_never_selectable</th>
+      <th>verdict</th>
+      <th>claims</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>Lab 19e matched simulator-ranked answer-constr...</td>
+      <td>0b5686401897aeed6d0bc81c7c5abad8bcdb98e9886cd2...</td>
+      <td>2e35dbf6edcad8211678b605687e6da0537dc5f57db8df...</td>
+      <td>a3b849ac3cbc57c085ec4f1f7697d113f13e8716837742...</td>
+      <td>{'preservation-control': '6a452d4938e1b95cf481...</td>
+      <td>32</td>
+      <td>True</td>
+      <td>32</td>
+      <td>{'incumbent': 0.7840420911875, 'preservation-c...</td>
+      <td>-0.051591</td>
+      <td>-0.061794</td>
+      <td>0.061794</td>
+      <td>{'incumbent': 15, 'preservation-control': 15, ...</td>
+      <td>{'incumbent': {'median_rank': 3.0, 'top1_rate'...</td>
+      <td>{'preservation-control': {'hard_stop': False, ...</td>
+      <td>{'matched_run_completed': False, 'treatment_no...</td>
+      <td>None</td>
+      <td>True</td>
+      <td>do_not_advance</td>
+      <td>This seed-45 result concerns ranking across th...</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+    verdict: do_not_advance
 
 
 ## Interpretation boundary

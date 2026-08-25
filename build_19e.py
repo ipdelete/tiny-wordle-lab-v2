@@ -43,7 +43,17 @@ code(
         print(f"MPS cap: {MEMORY_CAP_GIB:.0f} GiB of {total_gib:.0f} GiB")
 
     RUN_MODEL = os.environ.get("LAB19E_RUN_MODEL", "0") == "1"
+    RUN_TRAINING = (
+        RUN_MODEL
+        and os.environ.get("LAB19E_RUN_TRAINING", "1") == "1"
+    )
+    REUSE_GATE_B = (
+        RUN_MODEL
+        and os.environ.get("LAB19E_REUSE_GATE_B", "0") == "1"
+    )
     print("LAB19E_RUN_MODEL:", RUN_MODEL)
+    print("LAB19E_RUN_TRAINING:", RUN_TRAINING)
+    print("LAB19E_REUSE_GATE_B:", REUSE_GATE_B)
     """
 )
 
@@ -1578,7 +1588,7 @@ code(
 
 code(
     """
-    if RUN_MODEL:
+    if RUN_MODEL and not REUSE_GATE_B:
         reset_seeds(SEED)
         soak_model, soak_parameters, soak_incumbent_parameters = (
             load_dual_adapter()
@@ -1881,6 +1891,16 @@ code(
         release_model(soak_model)
         del soak_model
         print("Gate B passed:", gate_b)
+    elif RUN_MODEL:
+        gate_b = json.loads((RESULTS_DIR / "gate-b.json").read_text())
+        assert gate_b["passed"] is True
+        assert gate_b["action_scorer_max_abs_diff"] < 1e-3
+        assert gate_b["full_list_max_abs_diff"] < 1e-3
+        assert gate_b["full_list_peak_gib"] < MEMORY_ABORT_GIB
+        assert gate_b["training_peak_gib"] < MEMORY_ABORT_GIB
+        assert gate_b["full_list_creep_gib"] < 0.5
+        assert gate_b["training_creep_gib"] < 0.5
+        print("Gate B reused:", gate_b)
     else:
         print("Gate B numerical and memory checks not run")
     """
@@ -1918,7 +1938,7 @@ md(
 
 code(
     """
-    if RUN_MODEL:
+    if RUN_TRAINING:
         anchor_records = []
         for row in anchor_source.itertuples(index=False):
             history = parse_state_key(row.state_key)
@@ -2205,7 +2225,7 @@ code(
 
 code(
     """
-    if RUN_MODEL:
+    if RUN_TRAINING:
         for checkpoint in TRAINED_CHECKPOINTS.values():
             if checkpoint.exists():
                 raise FileExistsError(
@@ -2761,7 +2781,7 @@ md(
 
 code(
     """
-    if RUN_MODEL:
+    if RUN_TRAINING:
         def load_evaluation_model(
             policy_path: Path | None,
         ):
