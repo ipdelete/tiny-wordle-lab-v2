@@ -1,5 +1,0 @@
-method,trainable_fraction,training_seconds,checkpoint_mib,val_loss,curriculum_exact_acc,policy_top1_agreement,mean_policy_kl
-full_sft,1.0,1946.2,2284.68,0.6751,0.651,,
-lora,0.003834,785.5,19.68,0.7484,0.619,,
-distilled,1.0,3805.9,,,,0.927,0.1862
-grpo,0.003834,76.0,,,,,

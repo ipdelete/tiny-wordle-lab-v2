@@ -1,0 +1,9 @@
+{
+  "model": "omlx-qwen-38-27b",
+  "prompt_version": 2,
+  "temperature": 0,
+  "seed": 38,
+  "thinking": false,
+  "classified_count": 980,
+  "input_count": 980
+}

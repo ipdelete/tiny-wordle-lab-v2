@@ -1,0 +1,54 @@
+{
+  "record_count": 12972,
+  "answer_count": 2315,
+  "parts_of_speech": {
+    "source_precedence": [
+      "kaikki",
+      "moby_pos_ii",
+      "gcide",
+      "omlx_qwen_38_27b"
+    ],
+    "source_counts": {
+      "kaikki": 11836,
+      "moby_pos_ii": 89,
+      "gcide": 67,
+      "omlx_qwen_38_27b": 980
+    },
+    "classified_count": 12972,
+    "unclassified_count": 0,
+    "all_answers_classified": true,
+    "sources": {
+      "kaikki": {
+        "url": "https://kaikki.org/dictionary/English/kaikki.org-dictionary-English.jsonl.gz",
+        "filename": "kaikki.org-dictionary-English.jsonl.gz",
+        "size_bytes": 501976872
+      },
+      "moby_pos_ii": {
+        "url": "https://www.gutenberg.org/files/3203/files.zip",
+        "filename": "moby-pos-ii.zip",
+        "size_bytes": 832006
+      },
+      "gcide": {
+        "url": "https://ftp.gnu.org/gnu/gcide/gcide-0.54.tar.xz",
+        "filename": "gcide-0.54.tar.xz",
+        "size_bytes": 14803080
+      }
+    },
+    "qwen": {
+      "model": "omlx-qwen-38-27b",
+      "prompt_version": 2,
+      "temperature": 0,
+      "seed": 38,
+      "thinking": false,
+      "classified_count": 980,
+      "input_count": 980
+    }
+  },
+  "wordfreq": {
+    "package_version": "3.1.1",
+    "language": "en",
+    "wordlist": "best",
+    "zero_frequency_representation": "null"
+  },
+  "schema": "wordle-lexicon-record.schema.json"
+}

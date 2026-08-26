@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "wordle-lexicon-record.schema.json",
+  "title": "Original Wordle lexicon record",
+  "description": "The schema for one line of data/wordle-lexicon.jsonl. Each record describes one word from the original 12,972-word legal-guess vocabulary.",
+  "type": "object",
+  "required": [
+    "word",
+    "is_original_answer",
+    "zipf_frequency",
+    "parts_of_speech"
+  ],
+  "properties": {
+    "word": {
+      "type": "string",
+      "description": "A lowercase, five-letter ASCII word.",
+      "pattern": "^[a-z]{5}$",
+      "examples": [
+        "crane"
+      ]
+    },
+    "is_original_answer": {
+      "type": "boolean",
+      "description": "Whether the word belongs to the original 2,315-word answer vocabulary."
+    },
+    "zipf_frequency": {
+      "description": "The wordfreq Zipf frequency for English. Higher values indicate more common words; null means that no frequency was recorded.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "parts_of_speech": {
+      "type": "array",
+      "description": "The lexical parts of speech reported by the first matching source. An empty array means that none of the configured sources classified the word.",
+      "items": {
+        "$ref": "#/$defs/partOfSpeech"
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "partOfSpeech": {
+      "type": "string",
+      "enum": [
+        "adjective",
+        "adverb",
+        "conjunction",
+        "contraction",
+        "determiner",
+        "interjection",
+        "noun",
+        "numeral",
+        "particle",
+        "postposition",
+        "preposition",
+        "prepositional_phrase",
+        "pronoun",
+        "proper_noun",
+        "verb",
+        "phrase"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,36 +1,20 @@
-[build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
-name = "tiny-wordle-lab"
-version = "0.2.0"
-description = "Hands-on LLM training course using Qwen3-0.6B and Wordle"
-requires-python = ">=3.11"
+name = "tiny-wordle-lab-v2"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Ian Philpot", email = "ian.philpot@microsoft.com" }
+]
+requires-python = ">=3.12"
 dependencies = [
-  "torch>=2.13",
-  "transformers>=4.51",
-  "datasets>=3.0",
-  "accelerate>=1.0",
-  "numpy>=1.26",
-  "pandas>=2.2",
-  "matplotlib>=3.9",
-  "jupyterlab>=4.2",
-  "ipywidgets>=8.1",
-  "tqdm>=4.66",
-  "peft>=0.20.0",
-  "openai>=3.1.0",
-  "trl>=1.10.0",
+    "jsonschema>=4.26.0",
+    "wordfreq>=3.1.1",
 ]
 
-[project.optional-dependencies]
-dev = [
-  "pytest>=8.0",
-  "ruff>=0.6",
-]
+[project.scripts]
+tiny-wordle-lab-v2 = "tiny_wordle_lab_v2:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.pytest.ini_options]
-pythonpath = ["src"]
+[build-system]
+requires = ["uv_build>=0.11.14,<0.12.0"]
+build-backend = "uv_build"

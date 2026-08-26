@@ -1,6 +1,0 @@
-model,solve_rate,valid_output_rate,invalid_output_rate,repeat_guesses,history_consistency_rate,mean_turns_on_wins,total_eval_seconds
-base,0.05263157894736842,1.0,0.0,72,0.0,1.0,8.718208332997165
-full_sft,0.05263157894736842,1.0,0.0,75,0.0,1.0,7.32648774698464
-lora,0.0,1.0,0.0,95,0.0,,9.247694039004273
-distilled,0.0,0.0,1.0,0,,,32.29948133600192
-grpo,0.05263157894736842,1.0,0.0,86,0.0,1.0,7.100464084000123

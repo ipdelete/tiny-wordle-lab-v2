@@ -1,12 +1,5 @@
 .venv/
-*.egg-info/
+.cache/
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
 .DS_Store
-checkpoints/*
-!checkpoints/.gitkeep
-data/generated/*
-results/*
-!results/.gitkeep
-!results/lab12_*.csv

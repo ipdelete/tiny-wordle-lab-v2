@@ -1,41 +1,54 @@
-# Tiny Wordle Lab v2
+## Wordle vocabulary
 
-A hands-on course for learning modern LLM training by turning **Qwen3-0.6B** into a Wordle specialist.
+The original source lists are kept unchanged:
 
-## Fixed platform
+- `data/wordle-answers-original.txt` contains the 2,315 possible answers.
+- `data/wordle-guesses-original.txt` contains all 12,972 legal guesses.
 
-- Model: `Qwen/Qwen3-0.6B`
-- Runtime: PyTorch
-- Accelerator: Apple Metal / MPS
-- Interface: Jupyter Lab
-- Primary machine: Apple Silicon
-- Training philosophy: keep the machinery visible before introducing higher-level abstractions
+`data/wordle-lexicon.jsonl` adds answer membership, English Zipf frequency,
+and dictionary-backed parts of speech to each legal guess. Its records follow
+`data/wordle-lexicon-record.schema.json`.
 
-The point is **not** to find the smallest model that can solve Wordle. The point is to learn how model behavior changes through data, optimization, fine-tuning, distillation, and reinforcement learning.
-
-## Start here
+Build the enriched lexicon with:
 
 ```bash
-cd tiny-wordle-lab-v2
-brew install uv
-uv sync --extra dev
-export PYTORCH_ENABLE_MPS_FALLBACK=1
-uv run jupyter lab
+uv run python scripts/fetch_lexical_sources.py
+uv run python scripts/build_wordle_lexicon.py
 ```
 
-Then open:
+The fetch step caches source archives under `.cache/wordle-lexicon/`. The
+builder checks sources in this order:
 
-1. `notebooks/00_setup_and_mps.ipynb`
-2. `notebooks/01_model_anatomy.ipynb`
-3. `notebooks/02_overfit_one_batch.ipynb`
+1. The English Kaikki extract of Wiktionary
+2. Moby Part-of-Speech II
+3. GCIDE 0.54
+4. `omlx-qwen-38-27b` for words missed by all dictionaries
 
-Do not skip the observations and predictions in the notebooks. The code is only half of the course.
+The first source that classifies a word wins. The metadata file records
+aggregate coverage by source. Before running the optional Qwen fallback, words
+absent from all three dictionaries keep an empty POS array.
 
-## Ground rules
+Classify those remaining words and rebuild with:
 
-1. Qwen3-0.6B stays fixed unless an experiment explicitly requires a control.
-2. Establish a baseline before changing anything.
-3. Change one meaningful variable at a time.
-4. Record results, not impressions.
-5. Understand a primitive before replacing it with a framework abstraction.
-6. Every training lesson ends with an evaluation of behavior, not merely loss.
+```bash
+uv run python scripts/classify_unmatched_pos.py
+uv run python scripts/build_wordle_lexicon.py
+```
+
+Qwen labels are stored separately in `data/wordle-pos-qwen.jsonl`. Final
+lexicon records contain only the resulting POS array; model and prompt details
+stay in `data/wordle-pos-qwen.metadata.json`.
+
+The generator treats a `wordfreq` result of `0.0` as missing and writes
+`null`. It writes records in alphabetical order so repeated builds produce
+the same files.
+
+Frequency values come from
+[`wordfreq`](https://github.com/rspeer/wordfreq). Lexical labels come from the
+[Kaikki English dictionary](https://kaikki.org/dictionary/English/),
+[Moby Part-of-Speech II](https://www.gutenberg.org/ebooks/3203), and
+[GCIDE](https://gcide.gnu.org.ua/).
+
+The Dictionary of the Scots Language is useful for manually investigating
+remaining words, but its terms prohibit systematic downloading. It is not part
+of the automated pipeline.
