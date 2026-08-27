@@ -1,14 +1,18 @@
 [project]
 name = "tiny-wordle-lab-v2"
 version = "0.1.0"
-description = "Add your description here"
+description = "A deterministic research harness for the original Wordle vocabulary"
 readme = "README.md"
 authors = [
     { name = "Ian Philpot", email = "ian.philpot@microsoft.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "httpx2>=2.12.0",
     "jsonschema>=4.26.0",
+    "numpy>=2.5.2",
+    "openai>=3.5.0",
+    "openai-agents>=0.22.0",
     "wordfreq>=3.1.1",
 ]
 
@@ -18,3 +22,8 @@ tiny-wordle-lab-v2 = "tiny_wordle_lab_v2:main"
 [build-system]
 requires = ["uv_build>=0.11.14,<0.12.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

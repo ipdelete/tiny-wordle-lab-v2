@@ -1,0 +1,62 @@
+{
+  "config": {
+    "experiment_id": "golden",
+    "answers": ["banal"],
+    "max_opportunities": 6
+  },
+  "policy": {
+    "name": "scripted",
+    "parameters": {}
+  },
+  "summary": {
+    "games": 1,
+    "solved": 1,
+    "failed": 0,
+    "solve_rate": 1.0,
+    "penalized_turns": 4,
+    "mean_turns_on_wins": 4.0,
+    "policy_calls": 4,
+    "legal_actions": 3,
+    "illegal_actions": 1,
+    "repeat_actions": 1
+  },
+  "games": [
+    {
+      "answer": "banal",
+      "solved": true,
+      "policy_calls": 4,
+      "opportunities_used": 4,
+      "accepted_guesses": ["apple", "apple", "banal"],
+      "actions": [
+        {
+          "opportunity": 1,
+          "raw_output": "no",
+          "guess": null,
+          "status": "illegal",
+          "feedback": null
+        },
+        {
+          "opportunity": 2,
+          "raw_output": "apple",
+          "guess": "apple",
+          "status": "accepted",
+          "feedback": "YBBYB"
+        },
+        {
+          "opportunity": 3,
+          "raw_output": "apple",
+          "guess": "apple",
+          "status": "repeat",
+          "feedback": "YBBYB"
+        },
+        {
+          "opportunity": 4,
+          "raw_output": "banal",
+          "guess": "banal",
+          "status": "solved",
+          "feedback": "GGGGG"
+        }
+      ]
+    }
+  ]
+}

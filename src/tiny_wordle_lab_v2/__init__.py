@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from tiny-wordle-lab-v2!")
+from .cli import main
+
+__all__ = ["main"]

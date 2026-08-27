@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "experiment-result.schema.json",
+  "title": "Wordle research harness result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "experiment_id",
+    "policy",
+    "config",
+    "summary",
+    "execution",
+    "environment",
+    "git",
+    "inputs",
+    "games_artifact"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "experiment_id": {"type": "string", "minLength": 1},
+    "policy": {
+      "type": "object",
+      "required": ["name", "parameters"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "integer", "number", "boolean", "null"]
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "config": {
+      "type": "object",
+      "required": ["experiment_id", "answers", "max_opportunities"],
+      "properties": {
+        "experiment_id": {"type": "string", "minLength": 1},
+        "answers": {
+          "oneOf": [
+            {"const": "all"},
+            {
+              "type": "array",
+              "items": {"type": "string", "pattern": "^[a-z]{5}$"},
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          ]
+        },
+        "max_opportunities": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "games",
+        "solved",
+        "failed",
+        "solve_rate",
+        "penalized_turns",
+        "mean_turns_on_wins",
+        "policy_calls",
+        "legal_actions",
+        "illegal_actions",
+        "repeat_actions"
+      ],
+      "properties": {
+        "games": {"type": "integer", "minimum": 1},
+        "solved": {"type": "integer", "minimum": 0},
+        "failed": {"type": "integer", "minimum": 0},
+        "solve_rate": {"type": "number", "minimum": 0, "maximum": 1},
+        "penalized_turns": {"type": "integer", "minimum": 0},
+        "mean_turns_on_wins": {"type": ["number", "null"], "minimum": 0},
+        "policy_calls": {"type": "integer", "minimum": 0},
+        "legal_actions": {"type": "integer", "minimum": 0},
+        "illegal_actions": {"type": "integer", "minimum": 0},
+        "repeat_actions": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "execution": {
+      "type": "object",
+      "required": [
+        "started_at",
+        "finished_at",
+        "elapsed_seconds",
+        "policy_calls_per_second"
+      ],
+      "properties": {
+        "started_at": {"type": "string"},
+        "finished_at": {"type": "string"},
+        "elapsed_seconds": {"type": "number", "minimum": 0},
+        "policy_calls_per_second": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "required": ["python", "platform", "executable"],
+      "properties": {
+        "python": {"type": "string"},
+        "platform": {"type": "string"},
+        "executable": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "git": {
+      "type": "object",
+      "required": ["commit", "dirty", "worktree_sha256"],
+      "properties": {
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "dirty": {"type": "boolean"},
+        "worktree_sha256": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
+    "games_artifact": {
+      "type": "object",
+      "required": ["path", "sha256", "records"],
+      "properties": {
+        "path": {"const": "games.jsonl"},
+        "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "records": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
