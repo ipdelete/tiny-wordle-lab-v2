@@ -29,3 +29,11 @@ Raw optimization outputs are ignored. The completed run is summarized in
 tied the baseline exactly on validation and the strict gate rejected it. The
 rejected candidate is retained under `rejected/`; the selected and frozen
 prompt remains `prompts/wordle-player/v1-baseline.md`.
+
+The controlled follow-up changes only the optimizer to Sonnet 5 through
+SkillOpt's native Copilot CLI backend:
+
+```bash
+uv run --group prompt-optimization python -m prompt_optimization.run \
+  --config prompt_optimization/skillopt-sonnet-optimizer.yaml
+```

@@ -1,0 +1,9 @@
+_base_: skillopt.yaml
+
+model:
+  optimizer: claude-sonnet-5
+  optimizer_backend: copilot_chat
+  copilot_chat_optimizer_model: claude-sonnet-5
+
+env:
+  out_root: prompt_optimization/outputs/wordle-sonnet-5-optimizer
