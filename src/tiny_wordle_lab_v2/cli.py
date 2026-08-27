@@ -16,6 +16,7 @@ from .litellm_policy import (
     read_api_key,
 )
 from .policy import Policy
+from .prompt import DEFAULT_PROMPT_PATH, WordlePrompt
 
 
 POLICIES = (
@@ -38,6 +39,7 @@ def _parser() -> argparse.ArgumentParser:
     evaluate_parser.add_argument("--model", default=DEFAULT_MODEL)
     evaluate_parser.add_argument("--api-base", default=DEFAULT_API_BASE)
     evaluate_parser.add_argument("--env-file", type=Path, default=DEFAULT_ENV_FILE)
+    evaluate_parser.add_argument("--prompt", type=Path, default=DEFAULT_PROMPT_PATH)
     evaluate_parser.add_argument(
         "--answers",
         help="Comma-separated answer subset; defaults to all 2,315 answers",
@@ -61,6 +63,7 @@ def _make_policy(
     model: str = DEFAULT_MODEL,
     api_base: str = DEFAULT_API_BASE,
     env_file: Path = DEFAULT_ENV_FILE,
+    prompt_path: Path = DEFAULT_PROMPT_PATH,
 ) -> Policy:
     if name == "random":
         return RandomPolicy(lexicon, seed=seed)
@@ -77,6 +80,7 @@ def _make_policy(
             model=model,
             api_base=api_base,
             seed=seed,
+            prompt=WordlePrompt.from_path(prompt_path),
         )
     raise ValueError(f"unknown policy: {name}")
 
@@ -142,6 +146,7 @@ def main(argv: Sequence[str] | None = None) -> None:
                 model=arguments.model,
                 api_base=arguments.api_base,
                 env_file=arguments.env_file,
+                prompt_path=arguments.prompt,
             ),
             lexicon,
             EvaluationConfig(

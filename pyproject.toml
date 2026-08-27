@@ -27,3 +27,6 @@ build-backend = "uv_build"
 dev = [
     "pytest>=9.1.1",
 ]
+prompt-optimization = [
+    "skillopt @ https://github.com/microsoft/SkillOpt/archive/eb8c1e7bcbccdd80f9d422f12018fcd8e84ce19a.zip",
+]

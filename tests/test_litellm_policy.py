@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from tiny_wordle_lab_v2.game import Observation, Turn
 from tiny_wordle_lab_v2.litellm_policy import (
+    DEFAULT_PROMPT,
     OpenAIWordlePolicy,
     render_observation,
     transcript_messages,
@@ -82,3 +83,4 @@ def test_openai_policy_returns_raw_content_and_records_usage(monkeypatch) -> Non
 def test_descriptor_does_not_expose_api_key() -> None:
     policy = OpenAIWordlePolicy(api_key="secret", context_mode="snapshot")
     assert "secret" not in repr(policy.descriptor)
+    assert policy.descriptor.parameters["prompt_sha256"] == DEFAULT_PROMPT.sha256

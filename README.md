@@ -155,3 +155,17 @@ uv run tiny-wordle-lab-v2 evaluate \
 
 The adapter reads `LITELLM_MASTER_KEY` from `~/src/wmd-router/.env` by default.
 Use `--env-file` or `--api-base` to select another local configuration.
+
+### Prompt optimization before training
+
+The model-facing Wordle prompt lives in
+`prompts/wordle-player/v1-baseline.md`; evaluations record its source path and
+SHA-256. `prompt_optimization/` contains a standalone SkillOpt exercise that
+uses frozen train, validation, and final-holdout answer splits. It optimizes
+only that Markdown prompt against the deterministic harness, then freezes the
+selected prompt before model-training experiments begin.
+
+See `prompt_optimization/README.md` for the pinned dependency and run command.
+The first completed run found no validated improvement, so the original
+baseline prompt remains selected and frozen. The proposed `slate` opener tied
+the baseline and was rejected rather than promoted.

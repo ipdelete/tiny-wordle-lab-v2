@@ -19,25 +19,13 @@ from openai.types.shared import Reasoning
 
 from .game import Observation, parse_word
 from .policy import PolicyDescriptor
+from .prompt import WordlePrompt
 
 
 DEFAULT_API_BASE = "http://127.0.0.1:4000/v1"
 DEFAULT_ENV_FILE = Path("~/src/wmd-router/.env").expanduser()
 DEFAULT_MODEL = "gpt-oss-20b"
-PROMPT_VERSION = 2
-
-SYSTEM_PROMPT = """Play Wordle.
-
-Reply with exactly one lowercase five-letter English word and nothing else.
-Do not use punctuation or explain your choice.
-Never repeat a previous guess.
-
-Feedback marks:
-G = correct letter in the correct position
-Y = correct letter in the wrong position
-B = this occurrence of the letter is not matched
-
-Use all previous guesses and feedback to choose the next guess."""
+DEFAULT_PROMPT = WordlePrompt.from_path()
 
 INITIAL_USER_MESSAGE = "No guesses have been made. Choose the first guess."
 
@@ -88,8 +76,11 @@ def render_observation(observation: Observation) -> str:
     )
 
 
-def transcript_messages(observation: Observation) -> list[dict[str, str]]:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+def transcript_messages(
+    observation: Observation,
+    prompt: WordlePrompt = DEFAULT_PROMPT,
+) -> list[dict[str, str]]:
+    messages = [{"role": "system", "content": prompt.content}]
     next_history = 0
     total_actions = len(observation.previous_actions)
 
@@ -139,6 +130,7 @@ class OpenAIWordlePolicy:
         max_tokens: int = 2_048,
         timeout_seconds: float = 180,
         capture_requests: bool = False,
+        prompt: WordlePrompt = DEFAULT_PROMPT,
     ) -> None:
         if not api_key:
             raise ValueError("api_key must not be empty")
@@ -165,6 +157,7 @@ class OpenAIWordlePolicy:
         self._seed = seed
         self._reasoning_effort = reasoning_effort
         self._max_tokens = max_tokens
+        self._prompt = prompt
         self.usage = UsageTotals()
 
     @property
@@ -178,7 +171,8 @@ class OpenAIWordlePolicy:
                 "seed": self._seed,
                 "reasoning_effort": self._reasoning_effort,
                 "max_tokens": self._max_tokens,
-                "prompt_version": PROMPT_VERSION,
+                "prompt_source": self._prompt.source,
+                "prompt_sha256": self._prompt.sha256,
                 "candidate_list_provided": False,
                 "structured_output": False,
             },
@@ -187,10 +181,10 @@ class OpenAIWordlePolicy:
     def messages(self, observation: Observation) -> list[dict[str, str]]:
         if self._context_mode == "snapshot":
             return [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self._prompt.content},
                 {"role": "user", "content": render_observation(observation)},
             ]
-        return transcript_messages(observation)
+        return transcript_messages(observation, self._prompt)
 
     def choose(self, observation: Observation) -> str:
         response = self._client.chat.completions.create(
@@ -226,6 +220,7 @@ class AgentsSessionWordlePolicy:
         max_tokens: int = 2_048,
         timeout_seconds: float = 180,
         capture_requests: bool = False,
+        prompt: WordlePrompt = DEFAULT_PROMPT,
     ) -> None:
         if not api_key:
             raise ValueError("api_key must not be empty")
@@ -262,7 +257,7 @@ class AgentsSessionWordlePolicy:
         )
         self._agent = Agent(
             name="Wordle player",
-            instructions=SYSTEM_PROMPT,
+            instructions=prompt.content,
             model=chat_model,
             model_settings=ModelSettings(
                 temperature=temperature,
@@ -277,6 +272,7 @@ class AgentsSessionWordlePolicy:
         self._seed = seed
         self._reasoning_effort = reasoning_effort
         self._max_tokens = max_tokens
+        self._prompt = prompt
         self._session: SQLiteSession | None = None
         self._game_number = 0
         self._prior_action_count = 0
@@ -292,7 +288,8 @@ class AgentsSessionWordlePolicy:
                 "seed": self._seed,
                 "reasoning_effort": self._reasoning_effort,
                 "max_tokens": self._max_tokens,
-                "prompt_version": PROMPT_VERSION,
+                "prompt_source": self._prompt.source,
+                "prompt_sha256": self._prompt.sha256,
                 "candidate_list_provided": False,
                 "structured_output": False,
                 "reasoning_replay": False,
@@ -312,7 +309,7 @@ class AgentsSessionWordlePolicy:
         if self._session is None:
             raise RuntimeError("Agents session was not initialized")
 
-        messages = transcript_messages(observation)
+        messages = transcript_messages(observation, self._prompt)
         user_input = messages[-1]["content"]
         result = Runner.run_sync(
             self._agent,

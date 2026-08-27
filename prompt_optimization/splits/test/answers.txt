@@ -1,0 +1,13 @@
+# Final holdout sampled after validation with seed 20260827.
+nudge
+scuba
+thing
+adapt
+belch
+blend
+bathe
+peril
+canoe
+fruit
+motto
+local

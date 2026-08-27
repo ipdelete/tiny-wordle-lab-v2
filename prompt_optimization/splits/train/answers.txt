@@ -1,0 +1,9 @@
+# Curated failure-rich development set.
+foyer
+banal
+sissy
+apple
+alley
+sheep
+civic
+queue

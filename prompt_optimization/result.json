@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "status": "completed_no_improvement",
+  "selected_prompt": {
+    "path": "prompts/wordle-player/v1-baseline.md",
+    "sha256": "fe81e956caa2d97015dfdd5fc640be4e1471e1057cdc39845f6d5879ff89e2fe",
+    "origin": "initial_skill"
+  },
+  "rejected_candidate": {
+    "path": "prompt_optimization/rejected/step-0001-slate.md",
+    "sha256": "f5fa1b9ed4fde09b73a2b0e1c99b1ddb7b9fe667f00970c60c0d0c4b9023a64c",
+    "change": "Always open with slate.",
+    "reason": "The strict validation gate requires improvement; this candidate tied the baseline."
+  },
+  "model": {
+    "optimizer": "gpt-oss-20b",
+    "target": "gpt-oss-20b",
+    "gateway": "http://127.0.0.1:4000/v1",
+    "target_temperature": 0,
+    "target_reasoning_effort": "low",
+    "target_max_tokens": 2048
+  },
+  "method": {
+    "skillopt_revision": "eb8c1e7bcbccdd80f9d422f12018fcd8e84ce19a",
+    "epochs": 1,
+    "rollout_repeats": 2,
+    "gate_metric": "solve-first lexicographic score",
+    "gate_rule": "strict improvement",
+    "optimizer_calls": 2,
+    "optimizer_prompt_tokens": 6131,
+    "optimizer_completion_tokens": 3901,
+    "wall_time_seconds": 2927.8
+  },
+  "validation": {
+    "individual_games": 16,
+    "baseline": {
+      "solved": 6,
+      "penalized_turns": 97,
+      "score": 0.3639705882352941
+    },
+    "candidate": {
+      "solved": 6,
+      "penalized_turns": 97,
+      "score": 0.3639705882352941
+    },
+    "decision": "reject"
+  },
+  "holdout_repeatability": {
+    "note": "Both measurements used the unchanged selected prompt. Their difference is run-to-run model noise, not a prompt improvement.",
+    "individual_games_per_measurement": 24,
+    "first_measurement": {
+      "solved": 8,
+      "penalized_turns": 150
+    },
+    "second_measurement": {
+      "solved": 9,
+      "penalized_turns": 149
+    }
+  },
+  "provenance": {
+    "git_base_commit": "a1db9bcc8c67e3383bf8941c99859210b15c2c52",
+    "git_worktree_dirty": true,
+    "input_sha256": {
+      "config": "79183d394655ef1c72f5e9149725bcd57193641690157d848763abfa95357906",
+      "train_split": "e3f76f88733c942c441498ba9185bf87021537f5753e35cb920e4b63d4187326",
+      "validation_split": "de05cb00e17d752a4b84a574064ac8d18040032a7fca9b0402fae0336d0bb7fa",
+      "holdout_split": "6560956dc2414e680c112d9a54db5ac736ca54b6ae2fca8fbf2a5ed91177bb88"
+    },
+    "implementation_sha256": {
+      "wordle_adapter": "e0a7d9bf03c82aa10a3f491b736a22a43e2586b648d4f6858ea66a9cc3de87ea",
+      "runner": "9ce61f0b9c26e691aad208a8b53c9a2a92dfb572212c643c24811bae9263a3cb",
+      "score": "43aa6e1b54d1562f5c194b15ff30e23d199bf4fb7a6f9d5215c7aafe22afe552",
+      "model_policy": "48b901b192b8fa259d88e498e422145ba030111afae7766778679821c41e6079",
+      "evaluator": "140b3c04aa5edb3b030e77db2c7a0c1c39302697bdd6006436ba5fa8c3cc9181",
+      "game_rules": "6c296698bb5362be68b112540cda5748dcb949292e31d3e131e4b2aeab8bce43"
+    }
+  }
+}

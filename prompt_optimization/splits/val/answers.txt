@@ -1,0 +1,9 @@
+# Validation set sampled from the remaining canonical answers with seed 20260827.
+dilly
+gloss
+flaky
+folly
+shalt
+relax
+south
+bawdy
