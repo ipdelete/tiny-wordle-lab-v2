@@ -1,6 +1,7 @@
 .venv/
 .cache/
 __pycache__/
+.ipynb_checkpoints/
 *.py[cod]
 .DS_Store
 results/
