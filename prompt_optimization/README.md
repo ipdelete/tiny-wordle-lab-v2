@@ -43,3 +43,10 @@ more detailed strategy covering legal guesses, clue consistency, repeated
 letters, and information-rich openings. It nevertheless reduced validation
 performance from 7/16 solves and 96 penalized turns to 6/16 and 97, so the gate
 rejected it. The original prompt remains frozen.
+
+The next controlled run changes only the optimizer to GPT-5.6 Sol:
+
+```bash
+uv run --group prompt-optimization python -m prompt_optimization.run \
+  --config prompt_optimization/skillopt-sol-5.6-optimizer.yaml
+```
