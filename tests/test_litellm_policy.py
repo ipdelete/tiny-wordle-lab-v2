@@ -7,7 +7,6 @@ from tiny_wordle_lab_v2.litellm_policy import (
     DEFAULT_PROMPT,
     OpenAIWordlePolicy,
     render_observation,
-    transcript_messages,
 )
 
 
@@ -28,29 +27,8 @@ def test_render_observation_contains_only_public_game_state() -> None:
     assert "pilot" not in prompt
 
 
-def test_transcript_represents_the_same_public_state() -> None:
-    messages = transcript_messages(observation())
-    assert messages[1]["content"] == "No guesses have been made. Choose the first guess."
-    assert messages[2] == {"role": "assistant", "content": "crane"}
-    assert "CRANE produced BBYBB" in messages[3]["content"]
-    assert "light" not in repr(messages)
-    assert "pilot" not in repr(messages)
-
-
-def test_transcript_records_illegal_output() -> None:
-    state = Observation(
-        history=(),
-        previous_actions=("not a word",),
-        remaining_opportunities=5,
-        candidates=("crane",),
-    )
-    messages = transcript_messages(state)
-    assert messages[2] == {"role": "assistant", "content": "not a word"}
-    assert "was not a legal Wordle guess" in messages[3]["content"]
-
-
 def test_openai_policy_returns_raw_content_and_records_usage(monkeypatch) -> None:
-    policy = OpenAIWordlePolicy(api_key="secret", context_mode="snapshot")
+    policy = OpenAIWordlePolicy(api_key="secret")
     response = SimpleNamespace(
         choices=[
             SimpleNamespace(
@@ -81,6 +59,6 @@ def test_openai_policy_returns_raw_content_and_records_usage(monkeypatch) -> Non
 
 
 def test_descriptor_does_not_expose_api_key() -> None:
-    policy = OpenAIWordlePolicy(api_key="secret", context_mode="snapshot")
+    policy = OpenAIWordlePolicy(api_key="secret")
     assert "secret" not in repr(policy.descriptor)
     assert policy.descriptor.parameters["prompt_sha256"] == DEFAULT_PROMPT.sha256

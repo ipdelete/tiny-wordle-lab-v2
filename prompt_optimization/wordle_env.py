@@ -184,7 +184,6 @@ class WordleAdapter(EnvAdapter):
         for repeat in range(1, self.rollout_repeats + 1):
             policy = OpenAIWordlePolicy(
                 api_key=api_key,
-                context_mode="snapshot",
                 model=self.target_model,
                 api_base=self.api_base,
                 temperature=self.target_temperature,

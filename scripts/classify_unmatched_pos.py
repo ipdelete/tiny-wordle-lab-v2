@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import argparse
-import http.client
 import json
 import os
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any
+
+from openai import OpenAI, OpenAIError
+
+from tiny_wordle_lab_v2.litellm_policy import read_api_key
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,19 +56,6 @@ def read_words(path: Path) -> list[str]:
     if len(words) != len(set(words)):
         raise ValueError(f"{path} contains duplicate words")
     return words
-
-
-def read_api_key(path: Path) -> str:
-    for raw_line in path.read_text().splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        name, value = line.split("=", 1)
-        if name.strip() == "LITELLM_MASTER_KEY":
-            key = value.strip().strip("\"'")
-            if key:
-                return key
-    raise ValueError(f"LITELLM_MASTER_KEY is not set in {path}")
 
 
 def validate_record(record: dict[str, Any]) -> None:
@@ -141,8 +129,10 @@ def classify_batch(
         "temperature": 0,
         "max_tokens": 2_048,
         "seed": 38,
-        "chat_template_kwargs": {"enable_thinking": False},
-        "thinking_budget": 0,
+        "extra_body": {
+            "chat_template_kwargs": {"enable_thinking": False},
+            "thinking_budget": 0,
+        },
         "response_format": response_format(words),
         "messages": [
             {
@@ -165,20 +155,19 @@ def classify_batch(
             },
         ],
     }
-    request = urllib.request.Request(
-        gateway_url,
-        data=json.dumps(payload).encode(),
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
+    client = OpenAI(
+        api_key=api_key,
+        base_url=gateway_url.removesuffix("/chat/completions"),
+        timeout=180,
+        max_retries=0,
     )
     max_attempts = 12
     for attempt in range(1, max_attempts + 1):
         try:
-            with urllib.request.urlopen(request, timeout=180) as response:
-                result = json.load(response)
-            content = result["choices"][0]["message"]["content"]
+            response = client.chat.completions.create(**payload)
+            content = response.choices[0].message.content
+            if content is None:
+                raise ValueError("model returned no content")
             classifications = json.loads(content)["classifications"]
             records = [
                 {
@@ -193,12 +182,9 @@ def classify_batch(
                 validate_record(record)
             return sorted(records, key=lambda record: record["word"])
         except (
-            ConnectionResetError,
-            http.client.RemoteDisconnected,
             KeyError,
             json.JSONDecodeError,
-            TimeoutError,
-            urllib.error.URLError,
+            OpenAIError,
             ValueError,
         ):
             if attempt == max_attempts:

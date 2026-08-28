@@ -8,12 +8,9 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "httpx2>=2.12.0",
     "jsonschema>=4.26.0",
     "numpy>=2.5.2",
     "openai>=3.5.0",
-    "openai-agents>=0.22.0",
-    "wordfreq>=3.1.1",
 ]
 
 [project.scripts]
@@ -26,6 +23,9 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+]
+lexicon-build = [
+    "wordfreq>=3.1.1",
 ]
 prompt-optimization = [
     "skillopt @ https://github.com/microsoft/SkillOpt/archive/eb8c1e7bcbccdd80f9d422f12018fcd8e84ce19a.zip",

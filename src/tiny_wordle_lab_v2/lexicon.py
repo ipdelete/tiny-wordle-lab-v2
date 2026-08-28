@@ -90,12 +90,6 @@ def load_lexicon(root: Path = ROOT) -> Lexicon:
     if missing_answers:
         raise ValueError(f"legal guesses omit answers: {sorted(missing_answers)[:5]}")
 
-    required_keys = {
-        "word",
-        "is_original_answer",
-        "zipf_frequency",
-        "parts_of_speech",
-    }
     entries: dict[str, LexiconEntry] = {}
     record_order: list[str] = []
     with records_path.open() as stream:
@@ -107,29 +101,11 @@ def load_lexicon(root: Path = ROOT) -> Lexicon:
                     f"{records_path}:{line_number} violates the record schema: "
                     f"{errors[0].message}"
                 )
-            if set(record) != required_keys:
-                raise ValueError(
-                    f"{records_path}:{line_number} has unexpected record fields"
-                )
             word = record["word"]
             frequency = record["zipf_frequency"]
             parts = record["parts_of_speech"]
-            if (
-                not isinstance(word, str)
-                or word not in legal_set
-                or not isinstance(record["is_original_answer"], bool)
-                or (
-                    frequency is not None
-                    and (
-                        isinstance(frequency, bool)
-                        or not isinstance(frequency, (int, float))
-                        or frequency < 0
-                        or not math.isfinite(frequency)
-                    )
-                )
-                or not isinstance(parts, list)
-                or not all(isinstance(part, str) for part in parts)
-                or len(parts) != len(set(parts))
+            if word not in legal_set or (
+                frequency is not None and not math.isfinite(frequency)
             ):
                 raise ValueError(f"{records_path}:{line_number} is invalid")
             if word in entries:

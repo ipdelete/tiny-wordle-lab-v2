@@ -1,23 +1,11 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
-import httpx2 as httpx
-from agents import (
-    Agent,
-    ModelSettings,
-    Runner,
-    SQLiteSession,
-    set_tracing_disabled,
-)
-from agents.models.openai_chatcompletions import OpenAIChatCompletionsModel
-from openai import AsyncOpenAI, OpenAI
-from openai.types.shared import Reasoning
+from openai import OpenAI
 
-from .game import Observation, parse_word
+from .game import Observation
 from .policy import PolicyDescriptor
 from .prompt import WordlePrompt
 
@@ -26,9 +14,6 @@ DEFAULT_API_BASE = "http://127.0.0.1:4000/v1"
 DEFAULT_ENV_FILE = Path("~/src/wmd-router/.env").expanduser()
 DEFAULT_MODEL = "gpt-oss-20b"
 DEFAULT_PROMPT = WordlePrompt.from_path()
-
-INITIAL_USER_MESSAGE = "No guesses have been made. Choose the first guess."
-
 
 @dataclass
 class UsageTotals:
@@ -76,52 +61,11 @@ def render_observation(observation: Observation) -> str:
     )
 
 
-def transcript_messages(
-    observation: Observation,
-    prompt: WordlePrompt = DEFAULT_PROMPT,
-) -> list[dict[str, str]]:
-    messages = [{"role": "system", "content": prompt.content}]
-    next_history = 0
-    total_actions = len(observation.previous_actions)
-
-    if total_actions == 0:
-        messages.append({"role": "user", "content": INITIAL_USER_MESSAGE})
-        return messages
-
-    messages.append({"role": "user", "content": INITIAL_USER_MESSAGE})
-    for index, raw_output in enumerate(observation.previous_actions):
-        messages.append({"role": "assistant", "content": raw_output})
-        parsed = parse_word(raw_output)
-        accepted = (
-            next_history < len(observation.history)
-            and parsed == observation.history[next_history].guess
-        )
-        remaining = observation.remaining_opportunities + total_actions - index - 1
-        if accepted:
-            turn = observation.history[next_history]
-            next_history += 1
-            content = (
-                f"{turn.guess.upper()} produced {turn.feedback}. "
-                f"Opportunities remaining: {remaining}. Choose the next guess."
-            )
-        else:
-            content = (
-                f"Your response {raw_output!r} was not a legal Wordle guess. "
-                f"Opportunities remaining: {remaining}. Choose the next guess."
-            )
-        messages.append({"role": "user", "content": content})
-
-    if next_history != len(observation.history):
-        raise ValueError("observation history could not be aligned with policy outputs")
-    return messages
-
-
 class OpenAIWordlePolicy:
     def __init__(
         self,
         *,
         api_key: str,
-        context_mode: Literal["snapshot", "transcript"],
         model: str = DEFAULT_MODEL,
         api_base: str = DEFAULT_API_BASE,
         temperature: float = 0,
@@ -129,28 +73,15 @@ class OpenAIWordlePolicy:
         reasoning_effort: str = "low",
         max_tokens: int = 2_048,
         timeout_seconds: float = 180,
-        capture_requests: bool = False,
         prompt: WordlePrompt = DEFAULT_PROMPT,
     ) -> None:
         if not api_key:
             raise ValueError("api_key must not be empty")
-        if context_mode not in ("snapshot", "transcript"):
-            raise ValueError(f"unsupported context_mode: {context_mode}")
-        self.request_bodies: list[dict] = []
-
-        def capture_request(request: httpx.Request) -> None:
-            if capture_requests and request.content:
-                self.request_bodies.append(json.loads(request.content))
-
         self._client = OpenAI(
             api_key=api_key,
             base_url=api_base,
             timeout=timeout_seconds,
-            http_client=httpx.Client(
-                event_hooks={"request": [capture_request]},
-            ),
         )
-        self._context_mode = context_mode
         self._model = model
         self._api_base = api_base
         self._temperature = temperature
@@ -163,7 +94,7 @@ class OpenAIWordlePolicy:
     @property
     def descriptor(self) -> PolicyDescriptor:
         return PolicyDescriptor(
-            f"openai-{self._context_mode}",
+            "openai-snapshot",
             {
                 "model": self._model,
                 "api_base": self._api_base,
@@ -179,12 +110,10 @@ class OpenAIWordlePolicy:
         )
 
     def messages(self, observation: Observation) -> list[dict[str, str]]:
-        if self._context_mode == "snapshot":
-            return [
-                {"role": "system", "content": self._prompt.content},
-                {"role": "user", "content": render_observation(observation)},
-            ]
-        return transcript_messages(observation, self._prompt)
+        return [
+            {"role": "system", "content": self._prompt.content},
+            {"role": "user", "content": render_observation(observation)},
+        ]
 
     def choose(self, observation: Observation) -> str:
         response = self._client.chat.completions.create(
@@ -205,128 +134,6 @@ class OpenAIWordlePolicy:
         if choice.finish_reason == "length":
             self.usage.truncated_responses += 1
         return choice.message.content or ""
-
-
-class AgentsSessionWordlePolicy:
-    def __init__(
-        self,
-        *,
-        api_key: str,
-        model: str = DEFAULT_MODEL,
-        api_base: str = DEFAULT_API_BASE,
-        temperature: float = 0,
-        seed: int = 0,
-        reasoning_effort: str = "low",
-        max_tokens: int = 2_048,
-        timeout_seconds: float = 180,
-        capture_requests: bool = False,
-        prompt: WordlePrompt = DEFAULT_PROMPT,
-    ) -> None:
-        if not api_key:
-            raise ValueError("api_key must not be empty")
-        set_tracing_disabled(True)
-        self.request_bodies: list[dict] = []
-        self.usage = UsageTotals()
-
-        async def capture_request(request: httpx.Request) -> None:
-            if capture_requests and request.content:
-                self.request_bodies.append(json.loads(request.content))
-
-        async def capture_response(response: httpx.Response) -> None:
-            await response.aread()
-            if response.content:
-                body = json.loads(response.content)
-                if body.get("choices", [{}])[0].get("finish_reason") == "length":
-                    self.usage.truncated_responses += 1
-
-        client = AsyncOpenAI(
-            api_key=api_key,
-            base_url=api_base,
-            timeout=timeout_seconds,
-            http_client=httpx.AsyncClient(
-                event_hooks={
-                    "request": [capture_request],
-                    "response": [capture_response],
-                },
-            ),
-        )
-        chat_model = OpenAIChatCompletionsModel(
-            model=model,
-            openai_client=client,
-            should_replay_reasoning_content=lambda _context: False,
-        )
-        self._agent = Agent(
-            name="Wordle player",
-            instructions=prompt.content,
-            model=chat_model,
-            model_settings=ModelSettings(
-                temperature=temperature,
-                max_tokens=max_tokens,
-                reasoning=Reasoning(effort=reasoning_effort),
-                extra_body={"seed": seed},
-            ),
-        )
-        self._model = model
-        self._api_base = api_base
-        self._temperature = temperature
-        self._seed = seed
-        self._reasoning_effort = reasoning_effort
-        self._max_tokens = max_tokens
-        self._prompt = prompt
-        self._session: SQLiteSession | None = None
-        self._game_number = 0
-        self._prior_action_count = 0
-
-    @property
-    def descriptor(self) -> PolicyDescriptor:
-        return PolicyDescriptor(
-            "agents-session",
-            {
-                "model": self._model,
-                "api_base": self._api_base,
-                "temperature": self._temperature,
-                "seed": self._seed,
-                "reasoning_effort": self._reasoning_effort,
-                "max_tokens": self._max_tokens,
-                "prompt_source": self._prompt.source,
-                "prompt_sha256": self._prompt.sha256,
-                "candidate_list_provided": False,
-                "structured_output": False,
-                "reasoning_replay": False,
-            },
-        )
-
-    def _new_game(self) -> None:
-        self._game_number += 1
-        self._session = SQLiteSession(f"wordle-{self._game_number}")
-        self._prior_action_count = 0
-
-    def choose(self, observation: Observation) -> str:
-        if not observation.previous_actions:
-            self._new_game()
-        elif len(observation.previous_actions) != self._prior_action_count:
-            raise ValueError("Agents session is out of sync with the evaluator")
-        if self._session is None:
-            raise RuntimeError("Agents session was not initialized")
-
-        messages = transcript_messages(observation, self._prompt)
-        user_input = messages[-1]["content"]
-        result = Runner.run_sync(
-            self._agent,
-            user_input,
-            session=self._session,
-            max_turns=1,
-        )
-        run_usage = result.context_wrapper.usage
-        self.usage.requests += run_usage.requests
-        self.usage.input_tokens += run_usage.input_tokens
-        self.usage.output_tokens += run_usage.output_tokens
-        self.usage.total_tokens += run_usage.total_tokens
-        output = result.final_output
-        if not isinstance(output, str):
-            raise ValueError("Agents SDK final output was not a string")
-        self._prior_action_count = len(observation.previous_actions) + 1
-        return output
 
 
 LiteLLMPolicy = OpenAIWordlePolicy

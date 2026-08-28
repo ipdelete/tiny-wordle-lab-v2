@@ -70,11 +70,6 @@ not be evaluated until optimization is complete:
 ```bash
 uv run --group prompt-optimization python -m prompt_optimization.run \
   --config prompt_optimization/skillopt-sol-5.6-iterative.yaml
-
-uv run python -m prompt_optimization.evaluate_holdout \
-  --prompt prompt_optimization/outputs/wordle-sol-5.6-iterative/best_skill.md \
-  --answers prompt_optimization/splits-iterative/test/answers.txt \
-  --output prompt_optimization/outputs/wordle-sol-5.6-iterative/final-holdout.json
 ```
 
 The run accepted step 2 and rejected the other eight candidates. Validation

@@ -76,7 +76,6 @@ def _make_policy(
     if name == "litellm":
         return OpenAIWordlePolicy(
             api_key=read_api_key(env_file),
-            context_mode="snapshot",
             model=model,
             api_base=api_base,
             seed=seed,
