@@ -50,3 +50,8 @@ The next controlled run changes only the optimizer to GPT-5.6 Sol:
 uv run --group prompt-optimization python -m prompt_optimization.run \
   --config prompt_optimization/skillopt-sol-5.6-optimizer.yaml
 ```
+
+That run is summarized in `result-sol-5.6-optimizer.json`. Sol prioritized
+cumulative clue constraints and legal, unused guesses. The candidate reduced
+validation performance from 7/16 solves and 96 penalized turns to 5/16 and
+106, so it was rejected.

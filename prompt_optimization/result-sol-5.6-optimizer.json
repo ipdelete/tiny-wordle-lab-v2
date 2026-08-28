@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "status": "completed_no_improvement",
+  "controlled_change": "The optimizer changed to gpt-5.6-sol through SkillOpt's copilot_chat backend.",
+  "selected_prompt": {
+    "path": "prompts/wordle-player/v1-baseline.md",
+    "sha256": "fe81e956caa2d97015dfdd5fc640be4e1471e1057cdc39845f6d5879ff89e2fe",
+    "origin": "initial_skill"
+  },
+  "rejected_candidate": {
+    "path": "prompt_optimization/rejected/step-0001-sol-5.6-constraints.md",
+    "sha256": "46d8eaa356f8e0898f3098e78dcac0ab0ec2aafe9d57884f8b8915ed0e3a095f",
+    "change": "Add legality checks and cumulative positional, exclusion, and repeated-letter constraints.",
+    "reason": "The candidate solved two fewer validation games and added ten penalized turns."
+  },
+  "model": {
+    "optimizer": "gpt-5.6-sol",
+    "optimizer_backend": "copilot_chat",
+    "target": "gpt-oss-20b",
+    "target_gateway": "http://127.0.0.1:4000/v1",
+    "target_temperature": 0,
+    "target_reasoning_effort": "low",
+    "target_max_tokens": 2048
+  },
+  "method": {
+    "skillopt_revision": "eb8c1e7bcbccdd80f9d422f12018fcd8e84ce19a",
+    "epochs": 1,
+    "rollout_repeats": 2,
+    "gate_metric": "solve-first lexicographic score",
+    "gate_rule": "strict improvement",
+    "optimizer_calls": 4,
+    "optimizer_token_counts_available": false,
+    "wall_time_seconds": 3155.7
+  },
+  "validation": {
+    "individual_games": 16,
+    "baseline": {
+      "solved": 7,
+      "penalized_turns": 96,
+      "score": 0.42384453781512604
+    },
+    "candidate": {
+      "solved": 5,
+      "penalized_turns": 106,
+      "score": 0.29989495798319327
+    },
+    "decision": "reject"
+  },
+  "holdout_repeatability": {
+    "note": "The rejected candidate was never evaluated on the holdout. Both measurements used the unchanged selected prompt, so their difference measures target-model noise.",
+    "individual_games_per_measurement": 24,
+    "first_measurement": {
+      "solved": 8,
+      "penalized_turns": 150
+    },
+    "second_measurement": {
+      "solved": 9,
+      "penalized_turns": 149
+    }
+  },
+  "provenance": {
+    "git_base_commit": "93da67d",
+    "git_worktree_dirty": true,
+    "input_sha256": {
+      "base_config": "79183d394655ef1c72f5e9149725bcd57193641690157d848763abfa95357906",
+      "sol_config": "4ef610524e2205965d0f9a79caca9b97ad9c908848662820392167e9040bc0ef",
+      "train_split": "e3f76f88733c942c441498ba9185bf87021537f5753e35cb920e4b63d4187326",
+      "validation_split": "de05cb00e17d752a4b84a574064ac8d18040032a7fca9b0402fae0336d0bb7fa",
+      "holdout_split": "6560956dc2414e680c112d9a54db5ac736ca54b6ae2fca8fbf2a5ed91177bb88"
+    }
+  }
+}

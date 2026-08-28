@@ -174,3 +174,7 @@ A controlled follow-up used Sonnet 5 as the optimizer while retaining
 GPT-OSS-20B as the target. Its more detailed strategy prompt also failed the
 validation gate, dropping from 7/16 to 6/16 solves. Both results are preserved
 under `prompt_optimization/`.
+
+GPT-5.6 Sol was also tested as the optimizer under the same controls. Its
+constraint-focused candidate dropped validation performance from 7/16 to 5/16
+solves and was rejected.
