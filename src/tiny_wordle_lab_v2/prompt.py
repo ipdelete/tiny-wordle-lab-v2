@@ -33,3 +33,11 @@ class WordlePrompt:
         except ValueError:
             source = str(resolved)
         return cls.from_text(resolved.read_text(), source=source)
+
+
+def load_answer_file(path: Path) -> tuple[str, ...]:
+    return tuple(
+        line.strip().lower()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )

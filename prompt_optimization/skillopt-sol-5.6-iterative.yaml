@@ -1,0 +1,18 @@
+_base_: skillopt-sol-5.6-optimizer.yaml
+
+train:
+  num_epochs: 3
+  train_size: 12
+  batch_size: 4
+
+optimizer:
+  use_meta_skill: true
+  slow_update_samples: 12
+
+evaluation:
+  eval_test: false
+
+env:
+  split_dir: prompt_optimization/splits-iterative
+  out_root: prompt_optimization/outputs/wordle-sol-5.6-iterative
+  rollout_repeats: 3

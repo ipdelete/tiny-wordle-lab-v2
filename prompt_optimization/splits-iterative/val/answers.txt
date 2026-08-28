@@ -1,0 +1,17 @@
+# Iterative validation set sampled after train with seed 20260828.
+spook
+bulky
+cynic
+chide
+dopey
+briny
+filmy
+power
+swept
+fanny
+whale
+talon
+fifth
+miner
+shown
+civil

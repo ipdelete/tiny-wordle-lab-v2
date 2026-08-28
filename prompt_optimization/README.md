@@ -55,3 +55,24 @@ That run is summarized in `result-sol-5.6-optimizer.json`. Sol prioritized
 cumulative clue constraints and legal, unused guesses. The candidate reduced
 validation performance from 7/16 solves and 96 penalized turns to 5/16 and
 106, so it was rejected.
+
+## Iterative Sol run
+
+`skillopt-sol-5.6-iterative.yaml` runs three epochs with three four-answer
+steps per epoch. Rejected edits inform later steps in the same epoch, accepted
+prompts become the next step's baseline, and Meta-Skill written after epoch two
+is consumed in epoch three. Every validation gate uses 16 answers with three
+repeats. Training-time test evaluation is disabled.
+
+The run uses a new split under `splits-iterative/`. Its 32-answer test set must
+not be evaluated until optimization is complete:
+
+```bash
+uv run --group prompt-optimization python -m prompt_optimization.run \
+  --config prompt_optimization/skillopt-sol-5.6-iterative.yaml
+
+uv run python -m prompt_optimization.evaluate_holdout \
+  --prompt prompt_optimization/outputs/wordle-sol-5.6-iterative/best_skill.md \
+  --answers prompt_optimization/splits-iterative/test/answers.txt \
+  --output prompt_optimization/outputs/wordle-sol-5.6-iterative/final-holdout.json
+```
