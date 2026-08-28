@@ -28,7 +28,7 @@ Raw optimization outputs are ignored. The completed run is summarized in
 `result.json`. SkillOpt proposed always opening with `slate`, but the candidate
 tied the baseline exactly on validation and the strict gate rejected it. The
 rejected candidate is retained under `rejected/`; the selected and frozen
-prompt remains `prompts/wordle-player/v1-baseline.md`.
+prompt for that run remained `prompts/wordle-player/v1-baseline.md`.
 
 The controlled follow-up changes only the optimizer to Sonnet 5 through
 SkillOpt's native Copilot CLI backend:
@@ -42,7 +42,7 @@ That run is summarized in `result-sonnet-optimizer.json`. Sonnet proposed a
 more detailed strategy covering legal guesses, clue consistency, repeated
 letters, and information-rich openings. It nevertheless reduced validation
 performance from 7/16 solves and 96 penalized turns to 6/16 and 97, so the gate
-rejected it. The original prompt remains frozen.
+rejected it. That run retained the original prompt.
 
 The next controlled run changes only the optimizer to GPT-5.6 Sol:
 
@@ -76,3 +76,11 @@ uv run python -m prompt_optimization.evaluate_holdout \
   --answers prompt_optimization/splits-iterative/test/answers.txt \
   --output prompt_optimization/outputs/wordle-sol-5.6-iterative/final-holdout.json
 ```
+
+The run accepted step 2 and rejected the other eight candidates. Validation
+improved from 20/48 solves and 283 penalized turns to 22/48 and 269. The
+accepted prompt is frozen as
+`prompts/wordle-player/v2-skillopt-sol-iterative.md` and summarized in
+`result-sol-5.6-iterative.json`. The final holdout comparison was stopped at
+the user's request after only its baseline half completed, so no holdout result
+is claimed.

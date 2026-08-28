@@ -158,12 +158,12 @@ Use `--env-file` or `--api-base` to select another local configuration.
 
 ### Prompt optimization before training
 
-The model-facing Wordle prompt lives in
-`prompts/wordle-player/v1-baseline.md`; evaluations record its source path and
-SHA-256. `prompt_optimization/` contains a standalone SkillOpt exercise that
-uses frozen train, validation, and final-holdout answer splits. It optimizes
-only that Markdown prompt against the deterministic harness, then freezes the
-selected prompt before model-training experiments begin.
+Versioned model-facing Wordle prompts live under `prompts/wordle-player/`;
+evaluations record the selected prompt's source path and SHA-256.
+`prompt_optimization/` contains a standalone SkillOpt exercise that uses frozen
+train, validation, and final-holdout answer splits. It optimizes only that
+Markdown prompt against the deterministic harness, then freezes the selected
+prompt before model-training experiments begin.
 
 See `prompt_optimization/README.md` for the pinned dependency and run command.
 The first completed run found no validated improvement, so the original
@@ -178,3 +178,10 @@ under `prompt_optimization/`.
 GPT-5.6 Sol was also tested as the optimizer under the same controls. Its
 constraint-focused candidate dropped validation performance from 7/16 to 5/16
 solves and was rejected.
+
+A subsequent three-epoch Sol run performed nine sequential optimization steps
+with rejection history and cross-epoch Meta-Skill. Step 2 was accepted,
+improving validation from 20/48 solves and 283 penalized turns to 22/48 and
+269. The resulting `v2-skillopt-sol-iterative.md` is now the default frozen
+model prompt. The final holdout comparison was intentionally stopped before
+the selected-prompt half completed, so only the validation result is claimed.

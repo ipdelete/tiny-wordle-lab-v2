@@ -7,7 +7,9 @@ from pathlib import Path
 from .lexicon import ROOT
 
 
-DEFAULT_PROMPT_PATH = ROOT / "prompts" / "wordle-player" / "v1-baseline.md"
+DEFAULT_PROMPT_PATH = (
+    ROOT / "prompts" / "wordle-player" / "v2-skillopt-sol-iterative.md"
+)
 
 
 @dataclass(frozen=True)

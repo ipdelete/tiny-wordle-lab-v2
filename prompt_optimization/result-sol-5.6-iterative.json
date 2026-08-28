@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "status": "completed_validation_improvement_holdout_aborted",
+  "selected_prompt": {
+    "path": "prompts/wordle-player/v2-skillopt-sol-iterative.md",
+    "sha256": "e380414a6316cd696adb4318add0166724d052e5d66429e117e7390914cce6a4",
+    "origin": "step_0002"
+  },
+  "baseline_prompt": {
+    "path": "prompts/wordle-player/v1-baseline.md",
+    "sha256": "fe81e956caa2d97015dfdd5fc640be4e1471e1057cdc39845f6d5879ff89e2fe"
+  },
+  "model": {
+    "optimizer": "gpt-5.6-sol",
+    "optimizer_backend": "copilot_chat",
+    "target": "gpt-oss-20b",
+    "target_gateway": "http://127.0.0.1:4000/v1",
+    "target_temperature": 0,
+    "target_reasoning_effort": "low",
+    "target_max_tokens": 2048
+  },
+  "method": {
+    "skillopt_revision": "eb8c1e7bcbccdd80f9d422f12018fcd8e84ce19a",
+    "epochs": 3,
+    "steps_per_epoch": 3,
+    "total_steps": 9,
+    "rollout_repeats": 3,
+    "gate_metric": "solve-first lexicographic score",
+    "gate_rule": "strict improvement",
+    "accepted_steps": 1,
+    "rejected_steps": 8,
+    "best_step": 2,
+    "meta_skill_enabled": true,
+    "slow_update_enabled": false,
+    "optimizer_calls": 24,
+    "optimizer_token_counts_available": false,
+    "wall_time_seconds": 29244.1
+  },
+  "validation": {
+    "individual_games": 48,
+    "baseline": {
+      "solved": 20,
+      "penalized_turns": 283,
+      "score": 0.4125971817298348
+    },
+    "selected": {
+      "solved": 22,
+      "penalized_turns": 269,
+      "score": 0.45438532555879496
+    },
+    "decision": "accept_new_best"
+  },
+  "holdout": {
+    "status": "aborted_by_user",
+    "note": "The baseline measurement completed, but the selected-prompt measurement was interrupted. The incomplete comparison was not used for selection or reported as a result."
+  },
+  "provenance": {
+    "git_base_commit": "c5c04a765740f3394a974cf2782ffd96aa19a1f5",
+    "git_worktree_dirty": true,
+    "input_sha256": {
+      "config": "6d731b87fb97af549f7e9c89f052af80c9c2e5fd5503ae952a9f0bd83edc84b8",
+      "train_split": "33251af4be5af1e1d5ffc617d1e0c3de3400eab5cbc8b8d1378a32514caf288c",
+      "validation_split": "4c95d0609e0362e27844dacb22677d91925fa24be8a3a455447c2445dce8457c",
+      "holdout_split": "a9c6dcd16278b486b1e4fbd9f4957ce7b0bc36d5f6614c60fc53e8d61257f0a1"
+    }
+  }
+}
