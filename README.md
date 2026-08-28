@@ -169,3 +169,8 @@ See `prompt_optimization/README.md` for the pinned dependency and run command.
 The first completed run found no validated improvement, so the original
 baseline prompt remains selected and frozen. The proposed `slate` opener tied
 the baseline and was rejected rather than promoted.
+
+A controlled follow-up used Sonnet 5 as the optimizer while retaining
+GPT-OSS-20B as the target. Its more detailed strategy prompt also failed the
+validation gate, dropping from 7/16 to 6/16 solves. Both results are preserved
+under `prompt_optimization/`.
