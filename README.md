@@ -53,6 +53,12 @@ The Dictionary of the Scots Language is useful for manually investigating
 remaining words, but its terms prohibit systematic downloading. It is not part
 of the automated pipeline.
 
+Start JupyterLab for local and Tailscale access with:
+
+```bash
+scripts/run_jupyter.sh
+```
+
 ## Research harness
 
 The research harness evaluates a policy against the same Wordle rules, answer

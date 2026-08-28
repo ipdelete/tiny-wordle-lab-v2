@@ -27,6 +27,10 @@ dev = [
 lexicon-build = [
     "wordfreq>=3.1.1",
 ]
+notebooks = [
+    "jupyterlab>=4.6.3",
+    "pandas>=3.0.5",
+]
 prompt-optimization = [
     "skillopt @ https://github.com/microsoft/SkillOpt/archive/eb8c1e7bcbccdd80f9d422f12018fcd8e84ce19a.zip",
 ]
