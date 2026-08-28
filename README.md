@@ -59,6 +59,9 @@ Start JupyterLab for local and Tailscale access with:
 scripts/run_jupyter.sh
 ```
 
+The executed notebook provides the evidence behind
+[`docs/dataset-findings.md`](docs/dataset-findings.md).
+
 ## Research harness
 
 The research harness evaluates a policy against the same Wordle rules, answer
